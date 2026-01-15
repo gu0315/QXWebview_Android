@@ -1,0 +1,29 @@
+pluginManagement {
+    repositories {
+        google {
+            content {
+                includeGroupByRegex("com\\.android.*")
+                includeGroupByRegex("com\\.google.*")
+                includeGroupByRegex("androidx.*")
+            }
+        }
+        mavenCentral()
+        gradlePluginPortal()
+        maven { url 'https://jitpack.io' }
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        // 添加JitPack仓库以支持第三方库
+        maven { url 'https://jitpack.io' }
+        // 👇 新增这一行！！！ 配置flatDir仓库，指向所有模块的libs目录
+        flatDir { dirs "${rootDir}/app/libs" }
+    }
+}
+
+rootProject.name = "chery_android"
+include ':app'
+include ':qx_hybrid'

@@ -1,0 +1,9 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+plugins {
+alias(libs.plugins.android.application) apply false
+    alias(libs.plugins.kotlin.android) apply false
+    alias(libs.plugins.android.library) apply false
+}
+
+// 注意：仓库配置在 settings.gradle 中管理
+// 根据 repositoriesMode.FAIL_ON_PROJECT_REPOS 设置，项目中不允许添加仓库配置
