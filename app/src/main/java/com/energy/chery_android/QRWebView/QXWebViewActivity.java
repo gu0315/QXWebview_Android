@@ -56,7 +56,7 @@ public class QXWebViewActivity extends AppCompatActivity {
 
         setImmersiveStatusBar(true, true);
         setNavBarVisible(false);
-        setTargetUrl("http://192.168.31.137:3000/");
+        setTargetUrl("https://fr.dongxie.top/fr/#/");
 
         QXBridgePluginRegister.INSTANCE.registerAllPlugins(webView);
     }
