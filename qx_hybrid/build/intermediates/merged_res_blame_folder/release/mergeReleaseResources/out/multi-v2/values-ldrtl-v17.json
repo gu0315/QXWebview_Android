@@ -1,0 +1,34 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.energy.qx_hybrid-release-35:/values-ldrtl-v17/values-ldrtl-v17.xml",
+            "map": [
+                {
+                    "source": "/Users/guqianxiang/.gradle/caches/8.13/transforms/72776a5f7f968c55e0b5e15f511a167a/transformed/material-1.10.0/res/values-ldrtl-v17/values-ldrtl-v17.xml",
+                    "from": {
+                        "startLines": "2,3",
+                        "startColumns": "4,4",
+                        "startOffsets": "55,191",
+                        "endColumns": "135,140",
+                        "endOffsets": "186,327"
+                    }
+                }
+            ]
+        },
+        {
+            "outputFile": "com.energy.qx_hybrid-mergeReleaseResources-33:/values-ldrtl-v17/values-ldrtl-v17.xml",
+            "map": [
+                {
+                    "source": "/Users/guqianxiang/.gradle/caches/8.13/transforms/72776a5f7f968c55e0b5e15f511a167a/transformed/material-1.10.0/res/values-ldrtl-v17/values-ldrtl-v17.xml",
+                    "from": {
+                        "startLines": "2,3",
+                        "startColumns": "4,4",
+                        "startOffsets": "55,191",
+                        "endColumns": "135,140",
+                        "endOffsets": "186,327"
+                    }
+                }
+            ]
+        }
+    ]
+}

@@ -1,0 +1,19 @@
+<lint-module
+    format="1"
+    dir="/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid"
+    name=":qx_hybrid"
+    type="LIBRARY"
+    maven="chery_android:qx_hybrid:unspecified"
+    agpVersion="8.11.2"
+    buildFolder="build"
+    bootClassPath="/Users/guqianxiang/Library/Android/sdk/platforms/android-34/android.jar:/Users/guqianxiang/Library/Android/sdk/build-tools/35.0.0/core-lambda-stubs.jar"
+    javaSourceLevel="17"
+    compileTarget="android-34"
+    neverShrinking="true">
+  <lintOptions
+      abortOnError="true"
+      absolutePaths="true"
+      checkReleaseBuilds="true"
+      explainIssues="true"/>
+  <variant name="debug"/>
+</lint-module>

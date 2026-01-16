@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.energy.qx_hybrid-release-35:/layout-sw600dp-v13/design_layout_snackbar.xml",
+        "source": "com.energy.qx_hybrid-material-1.10.0-13:/layout-sw600dp-v13/design_layout_snackbar.xml"
+    },
+    {
+        "merged": "com.energy.qx_hybrid-release-35:/layout-sw600dp-v13/mtrl_layout_snackbar.xml",
+        "source": "com.energy.qx_hybrid-material-1.10.0-13:/layout-sw600dp-v13/mtrl_layout_snackbar.xml"
+    }
+]

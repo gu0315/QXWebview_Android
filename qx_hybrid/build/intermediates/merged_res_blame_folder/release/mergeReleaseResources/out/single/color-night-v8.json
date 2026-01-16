@@ -1,0 +1,14 @@
+[
+    {
+        "merged": "com.energy.qx_hybrid-release-35:/color-night-v8/material_timepicker_clockface.xml",
+        "source": "com.energy.qx_hybrid-material-1.10.0-13:/color-night-v8/material_timepicker_clockface.xml"
+    },
+    {
+        "merged": "com.energy.qx_hybrid-release-35:/color-night-v8/material_timepicker_button_stroke.xml",
+        "source": "com.energy.qx_hybrid-material-1.10.0-13:/color-night-v8/material_timepicker_button_stroke.xml"
+    },
+    {
+        "merged": "com.energy.qx_hybrid-release-35:/color-night-v8/material_timepicker_modebutton_tint.xml",
+        "source": "com.energy.qx_hybrid-material-1.10.0-13:/color-night-v8/material_timepicker_modebutton_tint.xml"
+    }
+]

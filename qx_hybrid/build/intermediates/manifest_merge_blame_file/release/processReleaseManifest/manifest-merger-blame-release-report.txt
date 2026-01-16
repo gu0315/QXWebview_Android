@@ -1,0 +1,72 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.energy.qx_hybrid" >
+4
+5    <uses-sdk android:minSdkVersion="19" />
+6
+7    <uses-feature
+7-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:3:5-5:36
+8        android:name="android.hardware.camera"
+8-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:4:9-47
+9        android:required="false" />
+9-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:5:9-33
+10    <uses-feature
+10-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:6:5-8:36
+11        android:name="android.hardware.camera.autofocus"
+11-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:7:9-57
+12        android:required="false" />
+12-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:8:9-33
+13
+14    <!-- 相机权限，用于二维码扫描 -->
+15    <uses-permission android:name="android.permission.CAMERA" />
+15-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:11:5-65
+15-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:11:22-62
+16    <!-- Android 12+ 蓝牙权限 -->
+17    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+17-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:13:5-73
+17-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:13:22-70
+18    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+18-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:14:5-76
+18-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:14:22-73
+19    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+19-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:15:5-78
+19-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:15:22-75
+20    <!-- Android 12- 蓝牙权限 -->
+21    <uses-permission android:name="android.permission.BLUETOOTH" />
+21-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:17:5-68
+21-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:17:22-65
+22    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+22-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:18:5-75
+22-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:18:22-71
+23    <!-- 定位权限（Android 12- 蓝牙扫描必需） -->
+24    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+24-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:20:5-79
+24-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:20:22-76
+25    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+25-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:21:5-81
+25-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:21:22-78
+26    <!-- 可选：声明蓝牙功能（非权限，仅标识应用使用蓝牙） -->
+27    <uses-feature
+27-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:23:5-90
+28        android:name="android.hardware.bluetooth_le"
+28-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:23:19-63
+29        android:required="true" />
+29-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:23:64-87
+30
+31    <application>
+31-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:25:5-32:19
+32
+33        <!-- 二维码扫描Activity -->
+34        <activity
+34-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:27:9-31:72
+35            android:name="com.jd.plugins.sacn.QRScannerActivity"
+35-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:28:13-65
+36            android:exported="false"
+36-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:29:13-37
+37            android:screenOrientation="portrait"
+37-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:30:13-49
+38            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+38-->/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/AndroidManifest.xml:31:13-69
+39    </application>
+40
+41</manifest>

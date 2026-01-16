@@ -1,0 +1,781 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<incidents format="6" by="lint 8.11.2" type="incidents">
+
+    <incident
+        id="DefaultLocale"
+        severity="warning"
+        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead">
+        <location
+            file="${:qx_hybrid*debug*MAIN*sourceProvider*0*javaDir*0}/com/jd/plugins/SystemInfoHandler.kt"
+            line="93"
+            column="13"
+            startOffset="3046"
+            endLine="93"
+            endColumn="48"
+            endOffset="3081"/>
+    </incident>
+
+    <incident
+        id="InternalInsetResource"
+        severity="warning"
+        message="Using internal inset dimension resource `status_bar_height` is not supported">
+        <location
+            file="${:qx_hybrid*debug*MAIN*sourceProvider*0*javaDir*0}/com/jd/plugins/SystemInfoHandler.kt"
+            line="188"
+            column="26"
+            startOffset="6552"
+            endLine="188"
+            endColumn="98"
+            endOffset="6624"/>
+    </incident>
+
+    <incident
+        id="GradleDependency"
+        severity="warning"
+        message="A newer version of `compileSdkVersion` than 34 is available: 36">
+        <fix-replace
+            description="Set compileSdkVersion to 36"
+            oldString="34"
+            replacement="36"
+            priority="0"/>
+        <location
+            file="${:qx_hybrid*projectDir}/build.gradle"
+            line="16"
+            column="5"
+            startOffset="265"
+            endLine="16"
+            endColumn="18"
+            endOffset="278"/>
+    </incident>
+
+    <incident
+        id="GradleDependency"
+        severity="warning"
+        message="A newer version of androidx.webkit:webkit than 1.10.0 is available: 1.15.0">
+        <fix-replace
+            description="Change to 1.15.0"
+            family="Update versions"
+            oldString="1.10.0"
+            replacement="1.15.0"
+            priority="0"/>
+        <location
+            file="${:qx_hybrid*projectDir}/build.gradle"
+            line="64"
+            column="9"
+            startOffset="1281"
+            endLine="64"
+            endColumn="40"
+            endOffset="1312"/>
+    </incident>
+
+    <incident
+        id="GradleDependency"
+        severity="warning"
+        message="A newer version of com.google.zxing:core than 3.5.2 is available: 3.5.4">
+        <fix-replace
+            description="Change to 3.5.4"
+            family="Update versions"
+            oldString="3.5.2"
+            replacement="3.5.4"
+            priority="0"/>
+        <location
+            file="${:qx_hybrid*projectDir}/build.gradle"
+            line="66"
+            column="9"
+            startOffset="1334"
+            endLine="66"
+            endColumn="38"
+            endOffset="1363"/>
+    </incident>
+
+    <incident
+        id="GradleDependency"
+        severity="warning"
+        message="A newer version of androidx.lifecycle:lifecycle-process than 2.6.1 is available: 2.10.0">
+        <fix-replace
+            description="Change to 2.10.0"
+            family="Update versions"
+            oldString="2.6.1"
+            replacement="2.10.0"
+            priority="0"/>
+        <location
+            file="${:qx_hybrid*projectDir}/build.gradle"
+            line="71"
+            column="20"
+            startOffset="1489"
+            endLine="71"
+            endColumn="64"
+            endOffset="1533"/>
+    </incident>
+
+    <incident
+        id="GradleDependency"
+        severity="warning"
+        message="A newer version of androidx.lifecycle:lifecycle-common-java8 than 2.6.1 is available: 2.10.0">
+        <fix-replace
+            description="Change to 2.10.0"
+            family="Update versions"
+            oldString="2.6.1"
+            replacement="2.10.0"
+            priority="0"/>
+        <location
+            file="${:qx_hybrid*projectDir}/build.gradle"
+            line="72"
+            column="20"
+            startOffset="1553"
+            endLine="72"
+            endColumn="69"
+            endOffset="1602"/>
+    </incident>
+
+    <incident
+        id="GradleDependency"
+        severity="warning"
+        message="A newer version of com.amap.api:search than 8.1.0 is available: 9.7.1">
+        <fix-replace
+            description="Change to 9.7.1"
+            family="Update versions"
+            oldString="8.1.0"
+            replacement="9.7.1"
+            priority="0"/>
+        <location
+            file="${:qx_hybrid*projectDir}/build.gradle"
+            line="76"
+            column="20"
+            startOffset="1748"
+            endLine="76"
+            endColumn="47"
+            endOffset="1775"/>
+    </incident>
+
+    <incident
+        id="NewerVersionAvailable"
+        severity="warning"
+        message="A newer version of com.amap.api:location than 5.5.0 is available: 6.5.1">
+        <fix-replace
+            description="Change to 6.5.1"
+            family="Update versions"
+            oldString="5.5.0"
+            replacement="6.5.1"
+            priority="0"/>
+        <location
+            file="${:qx_hybrid*projectDir}/build.gradle"
+            line="75"
+            column="20"
+            startOffset="1699"
+            endLine="75"
+            endColumn="49"
+            endOffset="1728"/>
+    </incident>
+
+    <incident
+        id="DiscouragedApi"
+        severity="warning"
+        message="Fixed screen orientations will be ignored in most cases, starting from Android 16. Android is moving toward a model where apps are expected to adapt to various orientations, display sizes, and aspect ratios.">
+        <show-url
+            description="Show https://developer.android.com/adaptive-apps"
+            url="https://developer.android.com/adaptive-apps"/>
+        <location
+            file="${:qx_hybrid*debug*MAIN*sourceProvider*0*manifest*0}"
+            line="30"
+            column="13"
+            startOffset="1355"
+            endLine="30"
+            endColumn="49"
+            endOffset="1391"/>
+    </incident>
+
+    <incident
+        id="DiscouragedApi"
+        severity="warning"
+        message="Use of this function is discouraged because resource reflection makes it harder to perform build optimizations and compile-time verification of code. It is much more efficient to retrieve resources by identifier (e.g. `R.foo.bar`) than by name (e.g. `getIdentifier(&quot;bar&quot;, &quot;foo&quot;, null)`).">
+        <location
+            file="${:qx_hybrid*debug*MAIN*sourceProvider*0*javaDir*0}/com/jd/plugins/SystemInfoHandler.kt"
+            line="188"
+            column="44"
+            startOffset="6570"
+            endLine="188"
+            endColumn="57"
+            endOffset="6583"/>
+    </incident>
+
+    <incident
+        id="DiscouragedApi"
+        severity="warning"
+        message="Use of this function is discouraged because resource reflection makes it harder to perform build optimizations and compile-time verification of code. It is much more efficient to retrieve resources by identifier (e.g. `R.foo.bar`) than by name (e.g. `getIdentifier(&quot;bar&quot;, &quot;foo&quot;, null)`).">
+        <location
+            file="${:qx_hybrid*debug*MAIN*sourceProvider*0*javaDir*0}/com/jd/plugins/SystemInfoHandler.kt"
+            line="203"
+            column="44"
+            startOffset="7088"
+            endLine="203"
+            endColumn="57"
+            endOffset="7101"/>
+    </incident>
+
+    <incident
+        id="ObsoleteSdkInt"
+        severity="warning"
+        message="Unnecessary; `SDK_INT` is always >= 19">
+        <fix-data conditional="true"/>
+        <location
+            file="${:qx_hybrid*debug*MAIN*sourceProvider*0*javaDir*0}/com/jd/hybrid/JDWebView.kt"
+            line="49"
+            column="21"
+            startOffset="1881"
+            endLine="49"
+            endColumn="72"
+            endOffset="1932"/>
+    </incident>
+
+    <incident
+        id="ObsoleteSdkInt"
+        severity="warning"
+        message="Unnecessary; `SDK_INT` is always >= 19">
+        <fix-data conditional="true"/>
+        <location
+            file="${:qx_hybrid*debug*MAIN*sourceProvider*0*javaDir*0}/com/jd/hybrid/JDWebView.kt"
+            line="49"
+            column="21"
+            startOffset="1881"
+            endLine="49"
+            endColumn="72"
+            endOffset="1932"/>
+    </incident>
+
+    <incident
+        id="ObsoleteSdkInt"
+        severity="warning"
+        message="Unnecessary; `SDK_INT` is always >= 19">
+        <fix-data conditional="true"/>
+        <location
+            file="${:qx_hybrid*debug*MAIN*sourceProvider*0*javaDir*0}/com/jd/plugins/SystemInfoHandler.kt"
+            line="217"
+            column="13"
+            startOffset="7603"
+            endLine="217"
+            endColumn="72"
+            endOffset="7662"/>
+    </incident>
+
+    <incident
+        id="UseKtx"
+        severity="warning"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?">
+        <fix-composite
+            description="Replace with the edit extension function"
+            family="Replace with the edit extension function"
+            robot="true"
+            independent="true">
+            <fix-replace
+                description="Replace with edit"
+                robot="true"
+                independent="true"
+                oldString="edit("
+                replacement="edit"
+                reformat="value"
+                imports="androidx.core.content.edit"
+                priority="0">
+                <range
+                    file="${:qx_hybrid*debug*MAIN*sourceProvider*0*javaDir*0}/com/jd/plugins/location/QXLocationManager.kt"
+                    startOffset="13336"
+                    endOffset="13341"/>
+            </fix-replace>
+            <fix-replace
+                description="Replace with  {"
+                robot="true"
+                independent="true"
+                oldString=")"
+                replacement=" {"
+                priority="0">
+                <range
+                    file="${:qx_hybrid*debug*MAIN*sourceProvider*0*javaDir*0}/com/jd/plugins/location/QXLocationManager.kt"
+                    startOffset="13341"
+                    endOffset="13342"/>
+            </fix-replace>
+            <fix-replace
+                description="Delete &quot;.&quot;"
+                robot="true"
+                independent="true"
+                oldString="."
+                replacement=""
+                priority="0">
+                <range
+                    file="${:qx_hybrid*debug*MAIN*sourceProvider*0*javaDir*0}/com/jd/plugins/location/QXLocationManager.kt"
+                    startOffset="13342"
+                    endOffset="13343"/>
+            </fix-replace>
+            <fix-replace
+                description="Replace with }"
+                robot="true"
+                independent="true"
+                oldString=".apply()"
+                replacement="}"
+                priority="0">
+                <range
+                    file="${:qx_hybrid*debug*MAIN*sourceProvider*0*javaDir*0}/com/jd/plugins/location/QXLocationManager.kt"
+                    startOffset="13408"
+                    endOffset="13416"/>
+            </fix-replace>
+        </fix-composite>
+        <location
+            file="${:qx_hybrid*debug*MAIN*sourceProvider*0*javaDir*0}/com/jd/plugins/location/QXLocationManager.kt"
+            line="386"
+            column="13"
+            startOffset="13324"
+            endLine="386"
+            endColumn="31"
+            endOffset="13342"/>
+    </incident>
+
+    <incident
+        id="UseTomlInstead"
+        severity="warning"
+        message="Use version catalog instead">
+        <fix-composite
+            description="Replace with new library catalog declaration for androidx-webkit-webkit2"
+            robot="true">
+            <fix-replace
+                description="Replace with androidxWebkitVersion = &quot;1.10.0&quot;..."
+                robot="true"
+                oldString="_lint_insert_begin_"
+                replacement="androidxWebkitVersion = &quot;1.10.0&quot;&#xA;"
+                priority="0">
+                <range
+                    file="$HOME/Desktop/奇瑞绿能/Hybrid容器/chery_android/gradle/libs.versions.toml"
+                    startOffset="26"
+                    endOffset="26"/>
+            </fix-replace>
+            <fix-replace
+                description="Replace with androidx-webkit-webkit2 = { module = &quot;androidx.webkit:webkit&quot;, version.ref = &quot;androidxWebkitVersion&quot; }..."
+                robot="true"
+                oldString="_lint_insert_begin_"
+                replacement="androidx-webkit-webkit2 = { module = &quot;androidx.webkit:webkit&quot;, version.ref = &quot;androidxWebkitVersion&quot; }&#xA;"
+                priority="0">
+                <range
+                    file="$HOME/Desktop/奇瑞绿能/Hybrid容器/chery_android/gradle/libs.versions.toml"
+                    startOffset="326"
+                    endOffset="326"/>
+            </fix-replace>
+            <fix-replace
+                description="Replace with libs.androidx.webkit.webkit2"
+                robot="true"
+                replacement="libs.androidx.webkit.webkit2"
+                priority="0">
+                <range
+                    file="${:qx_hybrid*projectDir}/build.gradle"
+                    startOffset="1281"
+                    endOffset="1312"/>
+            </fix-replace>
+        </fix-composite>
+        <location
+            file="${:qx_hybrid*projectDir}/build.gradle"
+            line="64"
+            column="9"
+            startOffset="1281"
+            endLine="64"
+            endColumn="40"
+            endOffset="1312"/>
+    </incident>
+
+    <incident
+        id="UseTomlInstead"
+        severity="warning"
+        message="Use version catalog instead">
+        <fix-composite
+            description="Replace with new library catalog declaration for com-google-zxing-core"
+            robot="true">
+            <fix-replace
+                description="Replace with googleCoreVersion = &quot;3.5.2&quot;..."
+                robot="true"
+                oldString="_lint_insert_begin_"
+                replacement="googleCoreVersion = &quot;3.5.2&quot;&#xA;"
+                priority="0">
+                <range
+                    file="$HOME/Desktop/奇瑞绿能/Hybrid容器/chery_android/gradle/libs.versions.toml"
+                    startOffset="26"
+                    endOffset="26"/>
+            </fix-replace>
+            <fix-replace
+                description="Replace with com-google-zxing-core = { module = &quot;com.google.zxing:core&quot;, version.ref = &quot;googleCoreVersion&quot; }..."
+                robot="true"
+                oldString="_lint_insert_begin_"
+                replacement="com-google-zxing-core = { module = &quot;com.google.zxing:core&quot;, version.ref = &quot;googleCoreVersion&quot; }&#xA;"
+                priority="0">
+                <range
+                    file="$HOME/Desktop/奇瑞绿能/Hybrid容器/chery_android/gradle/libs.versions.toml"
+                    startOffset="326"
+                    endOffset="326"/>
+            </fix-replace>
+            <fix-replace
+                description="Replace with libs.com.google.zxing.core"
+                robot="true"
+                replacement="libs.com.google.zxing.core"
+                priority="0">
+                <range
+                    file="${:qx_hybrid*projectDir}/build.gradle"
+                    startOffset="1334"
+                    endOffset="1363"/>
+            </fix-replace>
+        </fix-composite>
+        <location
+            file="${:qx_hybrid*projectDir}/build.gradle"
+            line="66"
+            column="9"
+            startOffset="1334"
+            endLine="66"
+            endColumn="38"
+            endOffset="1363"/>
+    </incident>
+
+    <incident
+        id="UseTomlInstead"
+        severity="warning"
+        message="Use version catalog instead">
+        <fix-composite
+            description="Replace with new library catalog declaration for com-journeyapps-zxing-android-embedded2"
+            robot="true">
+            <fix-replace
+                description="Replace with journeyappsZxingAndroidEmbeddedVersion = &quot;4.3.0&quot;..."
+                robot="true"
+                oldString="_lint_insert_begin_"
+                replacement="journeyappsZxingAndroidEmbeddedVersion = &quot;4.3.0&quot;&#xA;"
+                priority="0">
+                <range
+                    file="$HOME/Desktop/奇瑞绿能/Hybrid容器/chery_android/gradle/libs.versions.toml"
+                    startOffset="26"
+                    endOffset="26"/>
+            </fix-replace>
+            <fix-replace
+                description="Replace with com-journeyapps-zxing-android-embedded2 = { module = &quot;com.journeyapps:zxing-android-embedded&quot;, version.ref = &quot;journeyappsZxingAndroidEmbeddedVersion&quot; }..."
+                robot="true"
+                oldString="_lint_insert_begin_"
+                replacement="com-journeyapps-zxing-android-embedded2 = { module = &quot;com.journeyapps:zxing-android-embedded&quot;, version.ref = &quot;journeyappsZxingAndroidEmbeddedVersion&quot; }&#xA;"
+                priority="0">
+                <range
+                    file="$HOME/Desktop/奇瑞绿能/Hybrid容器/chery_android/gradle/libs.versions.toml"
+                    startOffset="326"
+                    endOffset="326"/>
+            </fix-replace>
+            <fix-replace
+                description="Replace with libs.com.journeyapps.zxing.android.embedded2"
+                robot="true"
+                replacement="libs.com.journeyapps.zxing.android.embedded2"
+                priority="0">
+                <range
+                    file="${:qx_hybrid*projectDir}/build.gradle"
+                    startOffset="1372"
+                    endOffset="1418"/>
+            </fix-replace>
+        </fix-composite>
+        <location
+            file="${:qx_hybrid*projectDir}/build.gradle"
+            line="67"
+            column="9"
+            startOffset="1372"
+            endLine="67"
+            endColumn="55"
+            endOffset="1418"/>
+    </incident>
+
+    <incident
+        id="UseTomlInstead"
+        severity="warning"
+        message="Use version catalog instead">
+        <fix-composite
+            description="Replace with new library catalog declaration for com-github-aicareles-android-ble"
+            robot="true">
+            <fix-replace
+                description="Replace with githubAndroidBleVersion = &quot;3.3.1&quot;..."
+                robot="true"
+                oldString="_lint_insert_begin_"
+                replacement="githubAndroidBleVersion = &quot;3.3.1&quot;&#xA;"
+                priority="0">
+                <range
+                    file="$HOME/Desktop/奇瑞绿能/Hybrid容器/chery_android/gradle/libs.versions.toml"
+                    startOffset="26"
+                    endOffset="26"/>
+            </fix-replace>
+            <fix-replace
+                description="Replace with com-github-aicareles-android-ble = { module = &quot;com.github.aicareles:Android-BLE&quot;, version.ref = &quot;githubAndroidBleVersion&quot; }..."
+                robot="true"
+                oldString="_lint_insert_begin_"
+                replacement="com-github-aicareles-android-ble = { module = &quot;com.github.aicareles:Android-BLE&quot;, version.ref = &quot;githubAndroidBleVersion&quot; }&#xA;"
+                priority="0">
+                <range
+                    file="$HOME/Desktop/奇瑞绿能/Hybrid容器/chery_android/gradle/libs.versions.toml"
+                    startOffset="326"
+                    endOffset="326"/>
+            </fix-replace>
+            <fix-replace
+                description="Replace with libs.com.github.aicareles.android.ble"
+                robot="true"
+                replacement="libs.com.github.aicareles.android.ble"
+                priority="0">
+                <range
+                    file="${:qx_hybrid*projectDir}/build.gradle"
+                    startOffset="1427"
+                    endOffset="1467"/>
+            </fix-replace>
+        </fix-composite>
+        <location
+            file="${:qx_hybrid*projectDir}/build.gradle"
+            line="68"
+            column="9"
+            startOffset="1427"
+            endLine="68"
+            endColumn="49"
+            endOffset="1467"/>
+    </incident>
+
+    <incident
+        id="UseTomlInstead"
+        severity="warning"
+        message="Use version catalog instead">
+        <fix-composite
+            description="Replace with new library catalog declaration for androidx-lifecycle-lifecycle-process2"
+            robot="true">
+            <fix-replace
+                description="Replace with androidxLifecycleProcessVersion = &quot;2.6.1&quot;..."
+                robot="true"
+                oldString="_lint_insert_begin_"
+                replacement="androidxLifecycleProcessVersion = &quot;2.6.1&quot;&#xA;"
+                priority="0">
+                <range
+                    file="$HOME/Desktop/奇瑞绿能/Hybrid容器/chery_android/gradle/libs.versions.toml"
+                    startOffset="26"
+                    endOffset="26"/>
+            </fix-replace>
+            <fix-replace
+                description="Replace with androidx-lifecycle-lifecycle-process2 = { module = &quot;androidx.lifecycle:lifecycle-process&quot;, version.ref = &quot;androidxLifecycleProcessVersion&quot; }..."
+                robot="true"
+                oldString="_lint_insert_begin_"
+                replacement="androidx-lifecycle-lifecycle-process2 = { module = &quot;androidx.lifecycle:lifecycle-process&quot;, version.ref = &quot;androidxLifecycleProcessVersion&quot; }&#xA;"
+                priority="0">
+                <range
+                    file="$HOME/Desktop/奇瑞绿能/Hybrid容器/chery_android/gradle/libs.versions.toml"
+                    startOffset="326"
+                    endOffset="326"/>
+            </fix-replace>
+            <fix-replace
+                description="Replace with libs.androidx.lifecycle.lifecycle.process2"
+                robot="true"
+                replacement="libs.androidx.lifecycle.lifecycle.process2"
+                priority="0">
+                <range
+                    file="${:qx_hybrid*projectDir}/build.gradle"
+                    startOffset="1489"
+                    endOffset="1533"/>
+            </fix-replace>
+        </fix-composite>
+        <location
+            file="${:qx_hybrid*projectDir}/build.gradle"
+            line="71"
+            column="20"
+            startOffset="1489"
+            endLine="71"
+            endColumn="64"
+            endOffset="1533"/>
+    </incident>
+
+    <incident
+        id="UseTomlInstead"
+        severity="warning"
+        message="Use version catalog instead">
+        <fix-composite
+            description="Replace with new library catalog declaration for androidx-lifecycle-lifecycle-common-java82"
+            robot="true">
+            <fix-replace
+                description="Replace with androidxLifecycleCommonJava8Version = &quot;2.6.1&quot;..."
+                robot="true"
+                oldString="_lint_insert_begin_"
+                replacement="androidxLifecycleCommonJava8Version = &quot;2.6.1&quot;&#xA;"
+                priority="0">
+                <range
+                    file="$HOME/Desktop/奇瑞绿能/Hybrid容器/chery_android/gradle/libs.versions.toml"
+                    startOffset="26"
+                    endOffset="26"/>
+            </fix-replace>
+            <fix-replace
+                description="Replace with androidx-lifecycle-lifecycle-common-java82 = { module = &quot;androidx.lifecycle:lifecycle-common-java8&quot;, version.ref = &quot;androidxLifecycleCommonJava8Version&quot; }..."
+                robot="true"
+                oldString="_lint_insert_begin_"
+                replacement="androidx-lifecycle-lifecycle-common-java82 = { module = &quot;androidx.lifecycle:lifecycle-common-java8&quot;, version.ref = &quot;androidxLifecycleCommonJava8Version&quot; }&#xA;"
+                priority="0">
+                <range
+                    file="$HOME/Desktop/奇瑞绿能/Hybrid容器/chery_android/gradle/libs.versions.toml"
+                    startOffset="326"
+                    endOffset="326"/>
+            </fix-replace>
+            <fix-replace
+                description="Replace with libs.androidx.lifecycle.lifecycle.common.java82"
+                robot="true"
+                replacement="libs.androidx.lifecycle.lifecycle.common.java82"
+                priority="0">
+                <range
+                    file="${:qx_hybrid*projectDir}/build.gradle"
+                    startOffset="1553"
+                    endOffset="1602"/>
+            </fix-replace>
+        </fix-composite>
+        <location
+            file="${:qx_hybrid*projectDir}/build.gradle"
+            line="72"
+            column="20"
+            startOffset="1553"
+            endLine="72"
+            endColumn="69"
+            endOffset="1602"/>
+    </incident>
+
+    <incident
+        id="UseTomlInstead"
+        severity="warning"
+        message="Use version catalog instead">
+        <fix-composite
+            description="Replace with new library catalog declaration for com-google-code-gson-gson2"
+            robot="true">
+            <fix-replace
+                description="Replace with googleGsonVersion = &quot;2.13.2&quot;..."
+                robot="true"
+                oldString="_lint_insert_begin_"
+                replacement="googleGsonVersion = &quot;2.13.2&quot;&#xA;"
+                priority="0">
+                <range
+                    file="$HOME/Desktop/奇瑞绿能/Hybrid容器/chery_android/gradle/libs.versions.toml"
+                    startOffset="26"
+                    endOffset="26"/>
+            </fix-replace>
+            <fix-replace
+                description="Replace with com-google-code-gson-gson2 = { module = &quot;com.google.code.gson:gson&quot;, version.ref = &quot;googleGsonVersion&quot; }..."
+                robot="true"
+                oldString="_lint_insert_begin_"
+                replacement="com-google-code-gson-gson2 = { module = &quot;com.google.code.gson:gson&quot;, version.ref = &quot;googleGsonVersion&quot; }&#xA;"
+                priority="0">
+                <range
+                    file="$HOME/Desktop/奇瑞绿能/Hybrid容器/chery_android/gradle/libs.versions.toml"
+                    startOffset="326"
+                    endOffset="326"/>
+            </fix-replace>
+            <fix-replace
+                description="Replace with libs.com.google.code.gson.gson2"
+                robot="true"
+                replacement="libs.com.google.code.gson.gson2"
+                priority="0">
+                <range
+                    file="${:qx_hybrid*projectDir}/build.gradle"
+                    startOffset="1622"
+                    endOffset="1656"/>
+            </fix-replace>
+        </fix-composite>
+        <location
+            file="${:qx_hybrid*projectDir}/build.gradle"
+            line="73"
+            column="20"
+            startOffset="1622"
+            endLine="73"
+            endColumn="54"
+            endOffset="1656"/>
+    </incident>
+
+    <incident
+        id="UseTomlInstead"
+        severity="warning"
+        message="Use version catalog instead">
+        <fix-composite
+            description="Replace with new library catalog declaration for com-amap-api-location"
+            robot="true">
+            <fix-replace
+                description="Replace with amapLocationVersion = &quot;5.5.0&quot;..."
+                robot="true"
+                oldString="_lint_insert_begin_"
+                replacement="amapLocationVersion = &quot;5.5.0&quot;&#xA;"
+                priority="0">
+                <range
+                    file="$HOME/Desktop/奇瑞绿能/Hybrid容器/chery_android/gradle/libs.versions.toml"
+                    startOffset="26"
+                    endOffset="26"/>
+            </fix-replace>
+            <fix-replace
+                description="Replace with com-amap-api-location = { module = &quot;com.amap.api:location&quot;, version.ref = &quot;amapLocationVersion&quot; }..."
+                robot="true"
+                oldString="_lint_insert_begin_"
+                replacement="com-amap-api-location = { module = &quot;com.amap.api:location&quot;, version.ref = &quot;amapLocationVersion&quot; }&#xA;"
+                priority="0">
+                <range
+                    file="$HOME/Desktop/奇瑞绿能/Hybrid容器/chery_android/gradle/libs.versions.toml"
+                    startOffset="326"
+                    endOffset="326"/>
+            </fix-replace>
+            <fix-replace
+                description="Replace with libs.com.amap.api.location"
+                robot="true"
+                replacement="libs.com.amap.api.location"
+                priority="0">
+                <range
+                    file="${:qx_hybrid*projectDir}/build.gradle"
+                    startOffset="1699"
+                    endOffset="1728"/>
+            </fix-replace>
+        </fix-composite>
+        <location
+            file="${:qx_hybrid*projectDir}/build.gradle"
+            line="75"
+            column="20"
+            startOffset="1699"
+            endLine="75"
+            endColumn="49"
+            endOffset="1728"/>
+    </incident>
+
+    <incident
+        id="UseTomlInstead"
+        severity="warning"
+        message="Use version catalog instead">
+        <fix-composite
+            description="Replace with new library catalog declaration for com-amap-api-search"
+            robot="true">
+            <fix-replace
+                description="Replace with amapSearchVersion = &quot;8.1.0&quot;..."
+                robot="true"
+                oldString="_lint_insert_begin_"
+                replacement="amapSearchVersion = &quot;8.1.0&quot;&#xA;"
+                priority="0">
+                <range
+                    file="$HOME/Desktop/奇瑞绿能/Hybrid容器/chery_android/gradle/libs.versions.toml"
+                    startOffset="26"
+                    endOffset="26"/>
+            </fix-replace>
+            <fix-replace
+                description="Replace with com-amap-api-search = { module = &quot;com.amap.api:search&quot;, version.ref = &quot;amapSearchVersion&quot; }..."
+                robot="true"
+                oldString="_lint_insert_begin_"
+                replacement="com-amap-api-search = { module = &quot;com.amap.api:search&quot;, version.ref = &quot;amapSearchVersion&quot; }&#xA;"
+                priority="0">
+                <range
+                    file="$HOME/Desktop/奇瑞绿能/Hybrid容器/chery_android/gradle/libs.versions.toml"
+                    startOffset="326"
+                    endOffset="326"/>
+            </fix-replace>
+            <fix-replace
+                description="Replace with libs.com.amap.api.search"
+                robot="true"
+                replacement="libs.com.amap.api.search"
+                priority="0">
+                <range
+                    file="${:qx_hybrid*projectDir}/build.gradle"
+                    startOffset="1748"
+                    endOffset="1775"/>
+            </fix-replace>
+        </fix-composite>
+        <location
+            file="${:qx_hybrid*projectDir}/build.gradle"
+            line="76"
+            column="20"
+            startOffset="1748"
+            endLine="76"
+            endColumn="47"
+            endOffset="1775"/>
+    </incident>
+
+</incidents>
