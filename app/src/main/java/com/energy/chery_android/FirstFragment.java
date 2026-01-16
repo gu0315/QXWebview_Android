@@ -1,5 +1,6 @@
 package com.energy.chery_android;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -10,6 +11,7 @@ import androidx.fragment.app.Fragment;
 import androidx.navigation.fragment.NavHostFragment;
 
 import com.energy.chery_android.databinding.FragmentFirstBinding;
+import com.jd.hybrid.QXWebViewActivity;
 
 public class FirstFragment extends Fragment {
 
@@ -33,6 +35,12 @@ public class FirstFragment extends Fragment {
                 NavHostFragment.findNavController(FirstFragment.this)
                         .navigate(R.id.action_FirstFragment_to_SecondFragment)
         );
+
+        binding.buttonWebview.setOnClickListener(v -> {
+            Intent intent = new Intent(requireContext(), QXWebViewActivity.class);
+            intent.putExtra(QXWebViewActivity.EXTRA_URL, "https://fr.dongxie.top/fr/#/");
+            startActivity(intent);
+        });
     }
 
     @Override

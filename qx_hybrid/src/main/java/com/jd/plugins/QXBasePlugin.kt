@@ -226,16 +226,8 @@ class QXBasePlugin : IBridgePlugin {
                 webView.goBack()
                 callback?.onSuccess(true)
             } else {
-                // 显示确认对话框
-                AlertDialog.Builder(activity)
-                    .setTitle("提示")
-                    .setMessage("确定要退出吗？")
-                    .setPositiveButton("确定") { _, _ ->
-                        activity.finish()
-                        callback?.onSuccess(false)
-                    }
-                    .setNegativeButton("取消", null)
-                    .show()
+                activity.finish()
+                callback?.onSuccess(false)
             }
         } catch (e: Exception) {
             Log.e(TAG, "执行返回逻辑失败", e)
