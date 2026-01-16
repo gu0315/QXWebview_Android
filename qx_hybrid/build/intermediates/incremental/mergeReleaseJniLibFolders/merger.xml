@@ -1,2 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<merger version="3"><dataSet config="main" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/main/jniLibs"/></dataSet><dataSet config="release" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/Users/guqianxiang/Desktop/奇瑞绿能/Hybrid容器/chery_android/qx_hybrid/src/release/jniLibs"/></dataSet></merger>

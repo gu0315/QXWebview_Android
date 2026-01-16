@@ -1,23 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
+  <component name="AndroidLayouts">
+    <shared>
+      <config />
+    </shared>
+  </component>
   <component name="AutoImportSettings">
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
     <list default="true" id="ce963f5f-ade7-4206-9878-2cf5bade582a" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/location/QXLocationManager.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/utils/DeviceUtils.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/utils/GCJ02Converter.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/utils/OpenMapAppUtils.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/qx_hybrid/build.gradle" beforeDir="false" afterPath="$PROJECT_DIR$/qx_hybrid/build.gradle" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gradle/8.13/executionHistory/executionHistory.bin" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/8.13/executionHistory/executionHistory.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gradle/8.13/executionHistory/executionHistory.lock" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/8.13/executionHistory/executionHistory.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gradle/8.13/fileHashes/fileHashes.bin" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/8.13/fileHashes/fileHashes.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gradle/8.13/fileHashes/fileHashes.lock" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/8.13/fileHashes/fileHashes.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gradle/8.13/fileHashes/resourceHashesCache.bin" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/8.13/fileHashes/resourceHashesCache.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gradle/buildOutputCleanup/buildOutputCleanup.lock" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/buildOutputCleanup/buildOutputCleanup.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gradle/file-system.probe" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/file-system.probe" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/energy/chery_android/QRWebView/QXWebViewActivity.java" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/energy/chery_android/QRWebView/QXWebViewActivity.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/qx_hybrid/src/main/AndroidManifest.xml" beforeDir="false" afterPath="$PROJECT_DIR$/qx_hybrid/src/main/AndroidManifest.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/hybrid/JDWebView.kt" beforeDir="false" afterPath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/hybrid/JDWebView.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/jdbridge/base/IBridgeWebView.kt" beforeDir="false" afterPath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/jdbridge/base/IBridgeWebView.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/ClosureRegistry.kt" beforeDir="false" afterPath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/ClosureRegistry.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/QXBasePlugin.kt" beforeDir="false" afterPath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/QXBasePlugin.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/QXBlePlugin.kt" beforeDir="false" afterPath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/QXBlePlugin.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/SystemInfoHandler.kt" beforeDir="false" afterPath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/SystemInfoHandler.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -27,35 +30,38 @@
   <component name="ClangdSettings">
     <option name="formatViaClangd" value="false" />
   </component>
+  <component name="ExecutionTargetManager" SELECTED_TARGET="device_and_snapshot_combo_box_target[DeviceId(pluginId=PhysicalDevice, isTemplate=false, identifier=serial=306588717700323)]" />
   <component name="ExternalProjectsData">
     <projectState path="$PROJECT_DIR$">
       <ProjectState />
     </projectState>
   </component>
   <component name="Git.Settings">
-    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/qx_hybrid" />
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 4
-}]]></component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 4
+}</component>
   <component name="ProjectId" id="38Jo4OPtYv1i7FHMjOTerkO6eIj" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.cidr.known.project.marker": "true",
-    "RunOnceActivity.readMode.enableVisualFormatting": "true",
-    "android.gradle.sync.needed": "true",
-    "cf.first.check.clang-format": "false",
-    "cidr.known.project.marker": "true",
-    "git-widget-placeholder": "main",
-    "kotlin-language-version-configured": "true",
-    "last_opened_file_path": "/Users/guqianxiang/Desktop/奇瑞绿能/App/chery_android"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Android App.app.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.cidr.known.project.marker&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.readMode.enableVisualFormatting&quot;: &quot;true&quot;,
+    &quot;cf.first.check.clang-format&quot;: &quot;false&quot;,
+    &quot;cidr.known.project.marker&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/guqianxiang/Desktop/奇瑞绿能/App/chery_android&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;project.propVCSSupport.DirectoryMappings&quot;
   }
-}]]></component>
+}</component>
   <component name="RunManager">
     <configuration name="app" type="AndroidRunConfigurationType" factoryName="Android App" activateToolWindowBeforeRun="false">
       <module name="chery_android.app" />
@@ -139,5 +145,27 @@
       <updated>1768526843137</updated>
     </task>
     <servers />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <ignored-roots>
+      <path value="$PROJECT_DIR$/.." />
+      <path value="$PROJECT_DIR$/qx_hybrid" />
+    </ignored-roots>
+  </component>
+  <component name="play_dynamic_filters_status">
+    <option name="appIdToCheckInfo">
+      <map>
+        <entry key="com.energy.chery_android">
+          <value>
+            <CheckInfo lastCheckTimestamp="1768526935870" />
+          </value>
+        </entry>
+        <entry key="com.energy.chery_android.test">
+          <value>
+            <CheckInfo lastCheckTimestamp="1768526935870" />
+          </value>
+        </entry>
+      </map>
+    </option>
   </component>
 </project>

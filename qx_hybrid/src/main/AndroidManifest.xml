@@ -30,6 +30,13 @@
     </queries>
 
     <application>
+        <!-- QXWebViewActivity -->
+        <activity
+            android:name="com.jd.hybrid.QXWebViewActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+            
         <!-- 二维码扫描Activity -->
         <activity
             android:name="com.jd.plugins.sacn.QRScannerActivity"
