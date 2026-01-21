@@ -1,2 +1,4 @@
 qx_hybrid/build/*
-.gradle/*
+.gradle/*'
+build/*
+.kiro/*

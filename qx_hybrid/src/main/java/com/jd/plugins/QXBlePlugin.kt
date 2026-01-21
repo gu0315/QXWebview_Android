@@ -92,7 +92,7 @@ class QXBlePlugin : IBridgePlugin {
 
         return when (method) {
             // 初始化蓝牙管理器
-            "initBle" -> {
+            "openBluetoothAdapter" -> {
                 initBle(callback)
                 true
             }
@@ -192,6 +192,11 @@ class QXBlePlugin : IBridgePlugin {
                         callback?.onError("参数解析失败: ${e.message}")
                     }
                 }
+                true
+            }
+            // 关闭蓝牙适配器
+            "closeBluetoothAdapter" -> {
+                closeBluetoothAdapter(callback)
                 true
             }
             else -> false
@@ -697,6 +702,58 @@ class QXBlePlugin : IBridgePlugin {
         } catch (e: Exception) {
             sendFailCallback(callback, QXBleErrorCode.UNKNOWN_ERROR, "解析参数/调用方法异常：${e.message ?: "未知错误"}")
             e.printStackTrace()
+        }
+    }
+
+    /**
+     * 关闭蓝牙适配器
+     * 对应uni-app的uni.closeBluetoothAdapter(OBJECT)
+     * 关闭蓝牙模块，使其进入未初始化状态
+     * 
+     * @param callback 回调函数
+     * 
+     * JavaScript调用示例：
+     * XWebView._callNative('QXBlePlugin', 'closeBluetoothAdapter', {}, 
+     *     function(result) { 
+     *         console.log('蓝牙适配器已关闭:', result); 
+     *     },
+     *     function(error) { 
+     *         console.error('关闭失败:', error); 
+     *     }
+     * );
+     */
+    private fun closeBluetoothAdapter(callback: IBridgeCallback?) {
+        try {
+            // 停止扫描
+            ble?.stopScan()
+            
+            // 断开所有连接的设备
+            ble?.connectedDevices?.forEach { device ->
+                ble?.disconnect(device)
+            }
+            
+            // 清空扫描到的设备列表
+            scannedDevices.clear()
+            
+            // 释放蓝牙资源
+            ble?.released()
+            // ble = null
+            
+            sendSuccessCallback(
+                callback,
+                null,
+                "蓝牙适配器已关闭"
+            )
+            
+            Log.d(NAME, "蓝牙适配器已关闭，所有连接已断开，资源已释放")
+            
+        } catch (e: Exception) {
+            sendFailCallback(
+                callback,
+                QXBleErrorCode.UNKNOWN_ERROR,
+                "关闭蓝牙适配器失败：${e.message}"
+            )
+            Log.e(NAME, "关闭蓝牙适配器异常", e)
         }
     }
 
