@@ -302,6 +302,7 @@ class QXBlePlugin : IBridgePlugin {
                         JSONObject().apply {
                             put("name", device.bleName ?: "")
                             put("RSSI", rssi)
+                            put("rssi", rssi)
                             put("deviceId", device.bleAddress)
                             put("advertisData", scanRecord?.let { android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP) } ?: "")
                             put("localName", device.bleName ?: "")
@@ -898,6 +899,7 @@ class QXBlePlugin : IBridgePlugin {
                     put("name", device.bleName ?: "")
                     put("deviceId", device.bleAddress)
                     put("RSSI", deviceInfo.rssi)
+                    put("rssi", deviceInfo.rssi)
                     put("advertisData", deviceInfo.scanRecord?.let { 
                         android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP) 
                     } ?: "")
@@ -916,6 +918,7 @@ class QXBlePlugin : IBridgePlugin {
                         put("name", connectedDevice.bleName ?: "")
                         put("deviceId", connectedDevice.bleAddress)
                         put("RSSI", 0) // 已连接设备没有实时 RSSI
+                        put("rssi", 0)
                         put("advertisData", "")
                         put("advertisServiceUUIDs", JSONArray())
                         put("localName", connectedDevice.bleName ?: "")
