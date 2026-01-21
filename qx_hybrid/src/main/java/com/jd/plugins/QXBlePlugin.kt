@@ -59,9 +59,25 @@ class QXBlePlugin : IBridgePlugin {
         val prefix: String get() = this.value
     }
 
-    // 错误码枚举（对齐iOS）
+    // 错误码枚举（对齐uni-app标准）
     enum class QXBleErrorCode(val code: Int, val message: String) {
-        SUCCESS(0, "操作成功"),
+        SUCCESS(0, "ok"),
+        NOT_INIT(10000, "not init"),
+        NOT_AVAILABLE(10001, "not available"),
+        NO_DEVICE(10002, "no device"),
+        CONNECTION_FAIL(10003, "connection fail"),
+        NO_SERVICE(10004, "no service"),
+        NO_CHARACTERISTIC(10005, "no characteristic"),
+        NO_CONNECTION(10006, "no connection"),
+        PROPERTY_NOT_SUPPORT(10007, "property not support"),
+        SYSTEM_ERROR(10008, "system error"),
+        SYSTEM_NOT_SUPPORT(10009, "system not support"),
+        ALREADY_CONNECT(10010, "already connect"),
+        NEED_PIN(10011, "need pin"),
+        OPERATE_TIME_OUT(10012, "operate time out"),
+        INVALID_DATA(10013, "invalid_data"),
+        
+        // 保留旧的错误码以兼容现有代码
         BLUETOOTH_NOT_OPEN(-1, "蓝牙未开启"),
         PERMISSION_DENIED(-2, "蓝牙权限被拒绝，请前往设置开启"),
         DEVICE_NOT_FOUND(-3, "未找到指定设备"),
@@ -197,6 +213,11 @@ class QXBlePlugin : IBridgePlugin {
             // 关闭蓝牙适配器
             "closeBluetoothAdapter" -> {
                 closeBluetoothAdapter(callback)
+                true
+            }
+            // 获取蓝牙适配器状态
+            "getBluetoothAdapterState" -> {
+                getBluetoothAdapterState(callback)
                 true
             }
             else -> false
@@ -754,6 +775,88 @@ class QXBlePlugin : IBridgePlugin {
                 "关闭蓝牙适配器失败：${e.message}"
             )
             Log.e(NAME, "关闭蓝牙适配器异常", e)
+        }
+    }
+
+    private fun getBluetoothAdapterState(callback: IBridgeCallback?) {
+        try {
+            val activity = currentActivity?.get() ?: run {
+                sendFailCallback(callback, QXBleErrorCode.SYSTEM_ERROR, "当前Activity为空")
+                return
+            }
+
+            val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+            
+            // 检查设备是否支持蓝牙
+            if (bluetoothAdapter == null) {
+                sendFailCallback(callback, QXBleErrorCode.SYSTEM_NOT_SUPPORT, "设备不支持蓝牙")
+                return
+            }
+
+            // 检查Android版本是否支持BLE
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR2) {
+                sendFailCallback(callback, QXBleErrorCode.SYSTEM_NOT_SUPPORT, "Android 系统版本低于 4.3 不支持 BLE")
+                return
+            }
+
+            // 检查蓝牙权限
+            val hasPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                ContextCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+            } else {
+                ContextCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH_ADMIN) == PackageManager.PERMISSION_GRANTED
+            }
+
+            if (!hasPermissions) {
+                sendFailCallback(callback, QXBleErrorCode.SYSTEM_ERROR, "蓝牙权限未授权")
+                return
+            }
+
+            // 获取蓝牙状态
+            val isEnabled = bluetoothAdapter.isEnabled
+            val isDiscovering = try {
+                if (ActivityCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED) {
+                    bluetoothAdapter.isDiscovering
+                } else {
+                    false
+                }
+            } catch (e: SecurityException) {
+                false
+            }
+
+            // 检查BLE是否初始化
+            val isBleInitialized = ble != null
+            
+            // 根据状态返回相应的错误码
+            when {
+                !isEnabled -> {
+                    sendFailCallback(callback, QXBleErrorCode.NOT_AVAILABLE, "当前蓝牙适配器不可用")
+                    return
+                }
+                !isBleInitialized -> {
+                    sendFailCallback(callback, QXBleErrorCode.NOT_INIT, "未初始化蓝牙适配器")
+                    return
+                }
+                else -> {
+                    // 成功情况：返回标准的 uni-app 格式
+                    val stateData = JSONObject().apply {
+                        put("available", true)
+                        put("discovering", isDiscovering)
+                    }
+                    sendSuccessCallback(callback, stateData, "获取蓝牙适配器状态成功")
+                }
+            }
+
+            Log.d(NAME, "蓝牙适配器状态: available=$isEnabled, discovering=$isDiscovering, bleInitialized=$isBleInitialized")
+            
+        } catch (e: Exception) {
+            sendFailCallback(
+                callback,
+                QXBleErrorCode.SYSTEM_ERROR,
+                "获取蓝牙适配器状态失败：${e.message}"
+            )
+            Log.e(NAME, "获取蓝牙适配器状态异常", e)
         }
     }
 

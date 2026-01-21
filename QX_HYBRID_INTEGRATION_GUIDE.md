@@ -513,24 +513,38 @@ XWebView._callNative('QXBlePlugin', 'openBluetoothAdapter', {},
 // 获取蓝牙适配器状态 - uni.getBluetoothAdapterState
 XWebView._callNative('QXBlePlugin', 'getBluetoothAdapterState', {},
     function(result) {
-        console.log('蓝牙可用:', result.data.available);
-        console.log('正在搜索:', result.data.discovering);
-        console.log('错误码:', result.data.errCode);
-        console.log('错误信息:', result.data.errMsg);
+        // 成功回调 - 返回标准 uni-app 格式
+        console.log('蓝牙可用:', result.available);
+        console.log('正在搜索:', result.discovering);
         
-        // 根据错误码处理不同状态
-        switch(result.data.errCode) {
-            case 0:
-                console.log('蓝牙状态正常');
-                break;
+        if (result.available) {
+            console.log('蓝牙适配器可用，可以进行蓝牙操作');
+        } else {
+            console.log('蓝牙适配器不可用');
+        }
+        
+        if (result.discovering) {
+            console.log('当前正在搜索蓝牙设备');
+        }
+    },
+    function(error) {
+        // 失败回调 - 根据错误码处理
+        console.error('获取蓝牙适配器状态失败');
+        console.error('错误码:', error.errCode);
+        console.error('错误信息:', error.errMsg);
+        
+        switch(error.errCode) {
             case 10000:
-                console.log('蓝牙适配器未初始化');
+                console.log('蓝牙适配器未初始化，请先调用 openBluetoothAdapter');
                 break;
             case 10001:
-                console.log('蓝牙适配器不可用');
+                console.log('当前蓝牙适配器不可用，请检查蓝牙是否开启');
                 break;
             case 10009:
-                console.log('系统不支持BLE');
+                console.log('系统不支持BLE，Android版本需要4.3以上');
+                break;
+            case 10008:
+                console.log('系统错误，可能是权限问题');
                 break;
         }
     }
