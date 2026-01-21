@@ -500,32 +500,181 @@ XWebView._callNative(
 #### 6. 蓝牙操作
 
 ```javascript
-// 初始化蓝牙
+// 初始化蓝牙适配器 - uni.openBluetoothAdapter
 XWebView._callNative('QXBlePlugin', 'openBluetoothAdapter', {}, 
-    function(result) { console.log('蓝牙已开启'); }
-);
-
-// 开始搜索设备
-XWebView._callNative('QXBlePlugin', 'startBluetoothDevicesDiscovery', {},
-    function(result) { console.log('开始搜索'); }
-);
-
-// 停止搜索
-XWebView._callNative('QXBlePlugin', 'stopBluetoothDevicesDiscovery', {});
-
-// 获取已发现的设备
-XWebView._callNative('QXBlePlugin', 'getBluetoothDevices', {},
-    function(result) {
-        console.log('设备列表:', result.devices);
+    function(result) { 
+        console.log('蓝牙适配器已初始化'); 
+    },
+    function(error) {
+        console.error('初始化失败:', error);
     }
 );
 
-// 连接设备
+// 获取蓝牙适配器状态 - uni.getBluetoothAdapterState
+XWebView._callNative('QXBlePlugin', 'getBluetoothAdapterState', {},
+    function(result) {
+        console.log('蓝牙可用:', result.data.available);
+        console.log('正在搜索:', result.data.discovering);
+        console.log('错误码:', result.data.errCode);
+        console.log('错误信息:', result.data.errMsg);
+        
+        // 根据错误码处理不同状态
+        switch(result.data.errCode) {
+            case 0:
+                console.log('蓝牙状态正常');
+                break;
+            case 10000:
+                console.log('蓝牙适配器未初始化');
+                break;
+            case 10001:
+                console.log('蓝牙适配器不可用');
+                break;
+            case 10009:
+                console.log('系统不支持BLE');
+                break;
+        }
+    }
+);
+
+// 开始搜寻蓝牙设备 - uni.startBluetoothDevicesDiscovery
+XWebView._callNative('QXBlePlugin', 'startBluetoothDevicesDiscovery', {
+    services: [], // 可选：要搜索的蓝牙设备主 service 的 uuid 列表
+    allowDuplicatesKey: false, // 可选：是否允许重复上报同一设备
+    interval: 0 // 可选：上报设备的间隔
+}, function(result) { 
+    console.log('开始搜索蓝牙设备'); 
+});
+
+// 停止搜寻蓝牙设备 - uni.stopBluetoothDevicesDiscovery
+XWebView._callNative('QXBlePlugin', 'stopBluetoothDevicesDiscovery', {},
+    function(result) { 
+        console.log('停止搜索蓝牙设备'); 
+    }
+);
+
+// 获取已发现的蓝牙设备 - uni.getBluetoothDevices
+XWebView._callNative('QXBlePlugin', 'getBluetoothDevices', {},
+    function(result) {
+        console.log('已发现设备:', result.data.devices);
+        result.data.devices.forEach(device => {
+            console.log('设备名称:', device.name);
+            console.log('设备ID:', device.deviceId);
+            console.log('信号强度:', device.RSSI);
+        });
+    }
+);
+
+// 获取已连接的蓝牙设备 - uni.getConnectedBluetoothDevices
+XWebView._callNative('QXBlePlugin', 'getConnectedBluetoothDevices', {
+    services: ['FEE7'] // 必填：蓝牙设备主 service 的 uuid 列表
+}, function(result) {
+    console.log('已连接设备:', result.data.devices);
+});
+
+// 连接低功耗蓝牙设备 - uni.createBLEConnection
 XWebView._callNative('QXBlePlugin', 'createBLEConnection', 
     { deviceId: 'XX:XX:XX:XX:XX:XX' },
-    function(result) { console.log('连接成功'); }
+    function(result) { 
+        console.log('BLE设备连接成功'); 
+    }
+);
+
+// 断开低功耗蓝牙设备连接 - uni.closeBLEConnection
+XWebView._callNative('QXBlePlugin', 'closeBLEConnection', 
+    { deviceId: 'XX:XX:XX:XX:XX:XX' },
+    function(result) { 
+        console.log('BLE设备已断开连接'); 
+    }
+);
+
+// 获取蓝牙设备所有服务 - uni.getBLEDeviceServices
+XWebView._callNative('QXBlePlugin', 'getBLEDeviceServices', 
+    { deviceId: 'XX:XX:XX:XX:XX:XX' },
+    function(result) {
+        console.log('设备服务:', result.data.services);
+        result.data.services.forEach(service => {
+            console.log('服务UUID:', service.uuid);
+            console.log('是否主服务:', service.isPrimary);
+        });
+    }
+);
+
+// 获取蓝牙设备某个服务中所有特征值 - uni.getBLEDeviceCharacteristics
+XWebView._callNative('QXBlePlugin', 'getBLEDeviceCharacteristics', {
+    deviceId: 'XX:XX:XX:XX:XX:XX',
+    serviceId: 'FEE7'
+}, function(result) {
+    console.log('服务特征值:', result.data.characteristics);
+    result.data.characteristics.forEach(char => {
+        console.log('特征值UUID:', char.uuid);
+        console.log('特征值属性:', char.properties);
+    });
+});
+
+// 启用低功耗蓝牙设备特征值变化时的 notify 功能 - uni.notifyBLECharacteristicValueChange
+XWebView._callNative('QXBlePlugin', 'notifyBLECharacteristicValueChange', {
+    deviceId: 'XX:XX:XX:XX:XX:XX',
+    serviceId: 'FEE7',
+    characteristicId: 'FEC8',
+    state: true // true: 启用 notify; false: 停用 notify
+}, function(result) {
+    console.log('特征值通知已启用');
+});
+
+// 向低功耗蓝牙设备特征值中写入二进制数据 - uni.writeBLECharacteristicValue
+XWebView._callNative('QXBlePlugin', 'writeBLECharacteristicValue', {
+    deviceId: 'XX:XX:XX:XX:XX:XX',
+    serviceId: 'FEE7',
+    characteristicId: 'FEC7',
+    value: 'aGVsbG8=', // Base64 编码的二进制数据
+    writeType: 'write' // 'write' 或 'writeNoResponse'
+}, function(result) {
+    console.log('数据写入成功');
+});
+
+// 关闭蓝牙适配器 - uni.closeBluetoothAdapter
+XWebView._callNative('QXBlePlugin', 'closeBluetoothAdapter', {},
+    function(result) { 
+        console.log('蓝牙适配器已关闭'); 
+    }
 );
 ```
+
+#### 蓝牙事件监听
+
+```javascript
+// 监听寻找到新设备的事件 - uni.onBluetoothDeviceFound
+// 这个事件会在 startBluetoothDevicesDiscovery 期间自动触发
+
+// 监听蓝牙适配器状态变化事件 - uni.onBluetoothAdapterStateChange
+// 返回参数：{ available: boolean, discovering: boolean }
+
+// 监听低功耗蓝牙连接状态的改变事件 - uni.onBLEConnectionStateChange  
+// 返回参数：{ deviceId: string, connected: boolean }
+
+// 监听低功耗蓝牙设备的特征值变化事件 - uni.onBLECharacteristicValueChange
+// 返回参数：{ deviceId: string, serviceId: string, characteristicId: string, value: ArrayBuffer }
+```
+
+#### 错误码说明
+
+| 错误码 | 错误信息 | 说明 |
+|--------|----------|------|
+| 0 | ok | 正常 |
+| 10000 | not init | 未初始化蓝牙适配器 |
+| 10001 | not available | 当前蓝牙适配器不可用 |
+| 10002 | no device | 没有找到指定设备 |
+| 10003 | connection fail | 连接失败 |
+| 10004 | no service | 没有找到指定服务 |
+| 10005 | no characteristic | 没有找到指定特征值 |
+| 10006 | no connection | 当前连接已断开 |
+| 10007 | property not support | 当前特征值不支持此操作 |
+| 10008 | system error | 其余所有系统上报的异常 |
+| 10009 | system not support | Android 系统特有，系统版本低于 4.3 不支持 BLE |
+| 10010 | already connect | 已连接 |
+| 10011 | need pin | 配对设备需要配对码 |
+| 10012 | operate time out | 连接超时 |
+| 10013 | invalid_data | 连接 deviceId 为空或者是格式不正确 |
 
 ### 生命周期事件监听
 
