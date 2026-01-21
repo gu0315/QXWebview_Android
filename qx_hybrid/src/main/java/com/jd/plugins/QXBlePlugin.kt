@@ -48,6 +48,16 @@ class QXBlePlugin : IBridgePlugin {
     private var ble: Ble<BleDevice>? = null
     private var currentActivity: WeakReference<Activity>? = null
     private val scannedDevices = mutableListOf<BleDevice>()
+    
+    // 扩展的设备信息存储
+    private data class BluetoothDeviceInfo(
+        val device: BleDevice,
+        val rssi: Int,
+        val scanRecord: ByteArray?,
+        val timestamp: Long = System.currentTimeMillis()
+    )
+    
+    private val scannedDevicesInfo = mutableListOf<BluetoothDeviceInfo>()
 
     // 事件类型枚举（对齐iOS）
     enum class QXBLEventType(val value: String) {
@@ -220,6 +230,11 @@ class QXBlePlugin : IBridgePlugin {
                 getBluetoothAdapterState(callback)
                 true
             }
+            // 获取已发现的蓝牙设备
+            "getBluetoothDevices" -> {
+                getBluetoothDevices(callback)
+                true
+            }
             else -> false
         }
     }
@@ -270,18 +285,26 @@ class QXBlePlugin : IBridgePlugin {
         }
 
         scannedDevices.clear()
+        scannedDevicesInfo.clear()
+        
         bleInstance.startScan(object : BleScanCallback<BleDevice>() {
             override fun onLeScan(device: BleDevice, rssi: Int, scanRecord: ByteArray?) {
                 if (!scannedDevices.any { d -> d.bleAddress == device.bleAddress }) {
                     scannedDevices.add(device)
+                    
+                    // 保存详细的设备信息
+                    scannedDevicesInfo.add(BluetoothDeviceInfo(device, rssi, scanRecord))
+                    
                     // 发送设备发现事件
                     sendBleEvent(
                         webView,
                         QXBLEventType.ON_BLUETOOTH_DEVICE_FOUND,
                         JSONObject().apply {
                             put("name", device.bleName ?: "")
-                            put("rssi", rssi)
+                            put("RSSI", rssi)
                             put("deviceId", device.bleAddress)
+                            put("advertisData", scanRecord?.let { android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP) } ?: "")
+                            put("localName", device.bleName ?: "")
                         }
                     )
                 }
@@ -857,6 +880,59 @@ class QXBlePlugin : IBridgePlugin {
                 "获取蓝牙适配器状态失败：${e.message}"
             )
             Log.e(NAME, "获取蓝牙适配器状态异常", e)
+        }
+    }
+
+    private fun getBluetoothDevices(callback: IBridgeCallback?) {
+        try {
+            // 检查蓝牙是否初始化
+            if (ble == null) {
+                sendFailCallback(callback, QXBleErrorCode.NOT_INIT, "未初始化蓝牙适配器")
+                return
+            }
+            val devicesArray = JSONArray()
+            // 添加已扫描到的设备
+            scannedDevicesInfo.forEach { deviceInfo ->
+                val device = deviceInfo.device
+                val deviceJson = JSONObject().apply {
+                    put("name", device.bleName ?: "")
+                    put("deviceId", device.bleAddress)
+                    put("RSSI", deviceInfo.rssi)
+                    put("advertisData", deviceInfo.scanRecord?.let { 
+                        android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP) 
+                    } ?: "")
+                    put("advertisServiceUUIDs", JSONArray()) // 需要解析 scanRecord 获取
+                    put("localName", device.bleName ?: "")
+                    put("serviceData", JSONObject()) // 需要解析 scanRecord 获取
+                }
+                devicesArray.put(deviceJson)
+            }
+            
+            // 添加已连接的设备（如果不在扫描列表中）
+            ble?.connectedDevices?.forEach { connectedDevice ->
+                val isAlreadyInList = scannedDevicesInfo.any { it.device.bleAddress == connectedDevice.bleAddress }
+                if (!isAlreadyInList) {
+                    val deviceJson = JSONObject().apply {
+                        put("name", connectedDevice.bleName ?: "")
+                        put("deviceId", connectedDevice.bleAddress)
+                        put("RSSI", 0) // 已连接设备没有实时 RSSI
+                        put("advertisData", "")
+                        put("advertisServiceUUIDs", JSONArray())
+                        put("localName", connectedDevice.bleName ?: "")
+                        put("serviceData", JSONObject())
+                    }
+                    devicesArray.put(deviceJson)
+                }
+            }
+
+            val resultData = JSONObject().apply {
+                put("devices", devicesArray)
+            }
+            sendSuccessCallback(callback, resultData, "获取已发现设备成功")
+            Log.d(NAME, "获取蓝牙设备成功，共${devicesArray.length()}个设备")
+        } catch (e: Exception) {
+            sendFailCallback(callback, QXBleErrorCode.SYSTEM_ERROR, "获取已发现设备失败：${e.message}")
+            Log.e(NAME, "获取蓝牙设备异常", e)
         }
     }
 

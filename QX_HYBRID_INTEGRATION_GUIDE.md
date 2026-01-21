@@ -569,12 +569,30 @@ XWebView._callNative('QXBlePlugin', 'stopBluetoothDevicesDiscovery', {},
 // 获取已发现的蓝牙设备 - uni.getBluetoothDevices
 XWebView._callNative('QXBlePlugin', 'getBluetoothDevices', {},
     function(result) {
-        console.log('已发现设备:', result.data.devices);
-        result.data.devices.forEach(device => {
+        console.log('已发现设备:', result.devices);
+        result.devices.forEach(device => {
             console.log('设备名称:', device.name);
             console.log('设备ID:', device.deviceId);
             console.log('信号强度:', device.RSSI);
+            console.log('广播数据:', device.advertisData);
+            console.log('本地名称:', device.localName);
+            console.log('服务UUID:', device.advertisServiceUUIDs);
+            console.log('服务数据:', device.serviceData);
         });
+    },
+    function(error) {
+        console.error('获取设备失败');
+        console.error('错误码:', error.errCode);
+        console.error('错误信息:', error.errMsg);
+        
+        switch(error.errCode) {
+            case 10000:
+                console.log('蓝牙适配器未初始化，请先调用 openBluetoothAdapter');
+                break;
+            case 10008:
+                console.log('系统错误');
+                break;
+        }
     }
 );
 
