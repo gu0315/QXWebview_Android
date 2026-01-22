@@ -46,6 +46,7 @@ class QXBlePlugin : IBridgePlugin {
     private var ble: Ble<BleDevice>? = null
     private var currentActivity: WeakReference<Activity>? = null
     private val scannedDevices = mutableListOf<BleDevice>()
+
     
     // 扩展的设备信息存储
     private data class BluetoothDeviceInfo(
@@ -264,6 +265,7 @@ class QXBlePlugin : IBridgePlugin {
             return
         }
         if (checkBlePermissions(activity)) {
+            // 0000FF00-0000-1000-8000-00805F9B34FB
             val options = Options().apply {
                 logBleEnable = true
                 throwBleException = true
@@ -273,7 +275,6 @@ class QXBlePlugin : IBridgePlugin {
                 scanPeriod = 12000L
                 uuidService = UUID.fromString("0000ff00-0000-1000-8000-00805f9b34fb")
                 uuidWriteCha = UUID.fromString("0000ff01-0000-1000-8000-00805f9b34fb")
-                uuidNotifyCha = UUID.fromString("0000ff02-0000-1000-8000-00805f9b34fb")
             }
             ble = Ble.create(activity.applicationContext, options, object : Ble.InitCallback {
                 override fun success() {
@@ -380,29 +381,13 @@ class QXBlePlugin : IBridgePlugin {
             }
 
             override fun onReady(device: BleDevice) {
+                super.onReady(device)
                 sendSuccessCallback(
                     callback,
                     JSONObject().apply { put("deviceId", device.bleAddress) },
                     "设备连接成功"
                 )
-                // 启用通知
-                ble?.enableNotify(device, true, object : BleNotifyCallback<BleDevice>() {
-                    override fun onChanged(device: BleDevice, characteristic: BluetoothGattCharacteristic) {
-                        val data = characteristic.value
-                        sendBleEvent(
-                            webView,
-                            QXBLEventType.ON_BLE_CHARACTERISTIC_VALUE_CHANGE,
-                            JSONObject().apply {
-                                put("deviceId", device.bleAddress)
-                                put("data", data?.let { ByteUtils.toHexString(it) } ?: "")
-                                put("characteristicId", characteristic.uuid.toString())
-                            }
-                        )
-                    }
-                    override fun onNotifyFailed(device: BleDevice, errorCode: Int) {
-                        Log.e(NAME, "通知开启失败: $errorCode")
-                    }
-                })
+                Log.d(NAME, "设备连接成功")
             }
         })
     }
@@ -502,8 +487,7 @@ class QXBlePlugin : IBridgePlugin {
             resultData,
             "获取设备[$deviceId]服务成功，共${gatt.services.size}个服务"
         )
-        // Log.d(NAME, "===== 设备[$deviceId]服务列表 =====")
-        Log.d(NAME, resultData.toString(2))
+        // Log.d(NAME, resultData.toString(2))
     }
 
     /**
@@ -685,58 +669,49 @@ class QXBlePlugin : IBridgePlugin {
 
 
 
+
+
     private fun notifyBLECharacteristicValueChange(params: String, callback: IBridgeCallback?, webView: IBridgeWebView?) {
         try {
             val jsonParams = JSONObject(params)
             val deviceMac = jsonParams.getString("deviceId")
             val serviceUUID = jsonParams.getString("serviceId")
-            val charUUID = jsonParams.getString("characteristicId")
+            val characteristicUUID = jsonParams.getString("characteristicId")
             val enable = jsonParams.getBoolean("enable")
             val device = ble?.connectedDevices?.find { it.bleAddress == deviceMac } ?: run {
                 sendFailCallback(callback, QXBleErrorCode.DEVICE_NOT_FOUND, "设备未连接")
                 return
             }
-            Log.w(NAME, "开始notify")
-            Log.w(NAME, "notify---serviceId-------$serviceUUID")
-            Log.w(NAME, "notify---characteristicId-------$charUUID")
-            ble?.enableNotifyByUuid(device, enable, UUID.fromString(serviceUUID), UUID.fromString(charUUID), object : BleNotifyCallback<BleDevice>() {
-                override fun onChanged(device: BleDevice, characteristic: BluetoothGattCharacteristic) {
-                    Log.w(NAME, "notify-onChanged")
-                    /*val data = characteristic.value
-                    sendBleEvent(
-                        webView,
-                        QXBLEventType.ON_BLE_CHARACTERISTIC_VALUE_CHANGE,
-                        JSONObject().apply {
-                            put("deviceId", device.bleAddress)
-                            put("data", data?.let { ByteUtils.toHexString(it) } ?: "")
-                            put("characteristicId", characteristic.uuid.toString())
-                        }
-                    )*/
-                }
-                override fun onNotifyCanceled(device: BleDevice?) {
-                    super.onNotifyCanceled(device)
-                    Log.w(NAME, "notify-onNotifyCanceled")
-                    sendSuccessCallback(callback, null, "已关闭通知")
-                }
-
-                override fun onNotifyFailed(device: BleDevice?, failedCode: Int) {
-                    super.onNotifyFailed(device, failedCode)
-                    Log.w(NAME, "notify-onNotifyFailed-$failedCode")
-                    sendSuccessCallback(callback, null, if (enable) "开启失败" else "关闭失败")
-                }
-
-                override fun onNotifySuccess(device: BleDevice?) {
-                    super.onNotifySuccess(device)
-                    Log.w(NAME, "notify-onNotifySuccess")
-                    sendSuccessCallback(callback, null, if (enable) "已开启通知" else "已关闭通知")
-                }
-            })
+            ble?.enableNotifyByUuid(device, enable, UUID.fromString(serviceUUID), UUID.fromString(characteristicUUID), bleNotifyCallback())
         } catch (e: Exception) {
             sendFailCallback(callback, QXBleErrorCode.UNKNOWN_ERROR, "解析参数/调用方法异常：${e.message ?: "未知错误"}")
             e.printStackTrace()
         }
     }
 
+
+    private fun bleNotifyCallback(): BleNotifyCallback<BleDevice> {
+        return object : BleNotifyCallback<BleDevice>(){
+            override fun onChanged(device: BleDevice?, characteristic: BluetoothGattCharacteristic?) {
+                Log.w(NAME, "notify-onChanged")
+            }
+
+            override fun onNotifyCanceled(device: BleDevice?) {
+                super.onNotifyCanceled(device)
+                Log.w(NAME, "notify-onNotifyCanceled")
+            }
+
+            override fun onNotifyFailed(device: BleDevice?, failedCode: Int) {
+                super.onNotifyFailed(device, failedCode)
+                Log.w(NAME, "notify-onNotifyFailed $failedCode")
+            }
+
+            override fun onNotifySuccess(device: BleDevice?) {
+                super.onNotifySuccess(device)
+                Log.w(NAME, "notify-onNotifySuccess")
+            }
+        }
+    }
     private fun closeBluetoothAdapter(callback: IBridgeCallback?) {
         try {
             // 停止扫描
