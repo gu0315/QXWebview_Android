@@ -22,7 +22,6 @@ import cn.com.heaton.blelibrary.ble.callback.BleScanCallback
 import cn.com.heaton.blelibrary.ble.callback.BleWriteCallback
 import cn.com.heaton.blelibrary.ble.model.BleDevice
 import cn.com.heaton.blelibrary.ble.utils.ByteUtils
-import cn.com.heaton.blelibrary.ble.utils.UuidUtils
 import com.jd.hybrid.JDWebView
 import com.jd.jdbridge.base.IBridgeCallback
 import com.jd.jdbridge.base.IBridgePlugin
@@ -30,7 +29,6 @@ import com.jd.jdbridge.base.IBridgeWebView
 import com.jd.jdbridge.base.callJS
 import com.jd.plugins.ClosureRegistry
 import org.json.JSONArray
-import org.json.JSONException
 import org.json.JSONObject
 import java.lang.ref.WeakReference
 import java.util.Locale
@@ -680,42 +678,64 @@ class QXBlePlugin : IBridgePlugin {
             val characteristicUUID = jsonParams.getString("characteristicId")
             val enable = jsonParams.getBoolean("enable")
             
+            // 验证设备连接状态
             val device = ble?.connectedDevices?.find { it.bleAddress == deviceMac } ?: run {
                 sendFailCallback(callback, QXBleErrorCode.DEVICE_NOT_FOUND, "设备未连接")
                 return
             }
             
-            // 获取 Gatt 实例
-            val bleClass = Ble::class.java
-            val bleRequestImplField = bleClass.getDeclaredField("bleRequestImpl")
-            bleRequestImplField.isAccessible = true
-            val bleRequestImpl = bleRequestImplField.get(ble) as? BleRequestImpl<*> ?: run {
-                sendFailCallback(callback, QXBleErrorCode.UNKNOWN_ERROR, "反射获取BleRequestImpl失败")
-                return
-            }
+            // 启用或关闭通知
+            enableCharacteristicNotification(deviceMac, serviceUUID, characteristicUUID, enable, callback)
             
-            val gatt = bleRequestImpl.getBluetoothGatt(deviceMac) ?: run {
+            // 注册通知回调监听
+            ble?.enableNotifyByUuid(device, enable, UUID.fromString(serviceUUID), UUID.fromString(characteristicUUID), bleNotifyCallback(webView))
+            
+        } catch (e: Exception) {
+            sendFailCallback(callback, QXBleErrorCode.UNKNOWN_ERROR, "解析参数/调用方法异常：${e.message ?: "未知错误"}")
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * 启用或关闭特征通知/指示
+     * @param deviceMac 设备MAC地址
+     * @param serviceUUID 服务UUID
+     * @param characteristicUUID 特征UUID
+     * @param enable true=启用，false=关闭
+     * @param callback 回调
+     */
+    private fun enableCharacteristicNotification(
+        deviceMac: String,
+        serviceUUID: String,
+        characteristicUUID: String,
+        enable: Boolean,
+        callback: IBridgeCallback?
+    ) {
+        try {
+            // 获取 Gatt 实例
+            val gatt = getBluetoothGatt(deviceMac) ?: run {
                 sendFailCallback(callback, QXBleErrorCode.PERIPHERAL_NIL, "Gatt实例为空")
                 return
             }
             
-            // 查找特征
+            // 查找服务
             val service = gatt.getService(UUID.fromString(serviceUUID)) ?: run {
                 sendFailCallback(callback, QXBleErrorCode.NO_SERVICE, "未找到服务: $serviceUUID")
                 return
             }
             
+            // 查找特征
             val characteristic = service.getCharacteristic(UUID.fromString(characteristicUUID)) ?: run {
                 sendFailCallback(callback, QXBleErrorCode.NO_CHARACTERISTIC, "未找到特征: $characteristicUUID")
                 return
             }
             
+            // 检查权限
             val activity = currentActivity?.get() ?: run {
                 sendFailCallback(callback, QXBleErrorCode.PERIPHERAL_NIL, "当前Activity为空")
                 return
             }
             
-            // 检查权限
             if (ActivityCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
                 sendFailCallback(callback, QXBleErrorCode.PERMISSION_DENIED, "缺少BLUETOOTH_CONNECT权限")
                 return
@@ -729,51 +749,119 @@ class QXBlePlugin : IBridgePlugin {
             }
             
             // 写入 CC'D 描述符
-            val descriptor = characteristic.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")) ?: run {
-                sendFailCallback(callback, QXBleErrorCode.NO_CHARACTERISTIC, "未找到CC'D描述符")
-                return
-            }
+            writeCCCDDescriptor(gatt, characteristic, enable, deviceMac, serviceUUID, characteristicUUID, callback)
             
-            // 根据特征属性选择启用通知或指示
-            val value = if (enable) {
-                if ((characteristic.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0) {
-                    BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                } else if ((characteristic.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE) != 0) {
-                    BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
-                } else {
-                    sendFailCallback(callback, QXBleErrorCode.PROPERTY_NOT_SUPPORT, "特征不支持通知或指示")
-                    return
-                }
-            } else {
-                BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
-            }
-            
-            descriptor.value = value
-            val writeSuccess = gatt.writeDescriptor(descriptor)
-            if (writeSuccess) {
-                Log.d(NAME, "CC'D描述符写入请求已发送: enable=$enable")
-                sendSuccessCallback(callback, JSONObject().apply {
-                    put("deviceId", deviceMac)
-                    put("serviceId", serviceUUID)
-                    put("characteristicId", characteristicUUID)
-                    put("enabled", enable)
-                }, if (enable) "通知已启用" else "通知已关闭")
-            } else {
-                sendFailCallback(callback, QXBleErrorCode.SYSTEM_ERROR, "CC'D描述符写入失败")
-            }
-
-            ble?.enableNotifyByUuid(device, enable, UUID.fromString(serviceUUID), UUID.fromString(characteristicUUID), bleNotifyCallback())
         } catch (e: Exception) {
-            sendFailCallback(callback, QXBleErrorCode.UNKNOWN_ERROR, "解析参数/调用方法异常：${e.message ?: "未知错误"}")
+            sendFailCallback(callback, QXBleErrorCode.UNKNOWN_ERROR, "启用通知异常：${e.message}")
             e.printStackTrace()
         }
     }
 
+    /**
+     * 写入 CC'D (Client Characteristic Configuration Descriptor) 描述符
+     * @param gatt BluetoothGatt实例
+     * @param characteristic 特征对象
+     * @param enable true=启用，false=关闭
+     * @param deviceMac 设备MAC地址
+     * @param serviceUUID 服务UUID
+     * @param characteristicUUID 特征UUID
+     * @param callback 回调
+     */
+    private fun writeCCCDDescriptor(
+        gatt: BluetoothGatt,
+        characteristic: BluetoothGattCharacteristic,
+        enable: Boolean,
+        deviceMac: String,
+        serviceUUID: String,
+        characteristicUUID: String,
+        callback: IBridgeCallback?
+    ) {
+        // CC'D 标准 UUID
+        val ccdUUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+        
+        val descriptor = characteristic.getDescriptor(ccdUUID) ?: run {
+            sendFailCallback(callback, QXBleErrorCode.NO_CHARACTERISTIC, "未找到CC'D描述符")
+            return
+        }
+        
+        // 根据特征属性选择启用通知或指示
+        val value = if (enable) {
+            when {
+                (characteristic.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0 -> {
+                    Log.d(NAME, "使用 NOTIFY 模式")
+                    BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                }
+                (characteristic.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE) != 0 -> {
+                    Log.d(NAME, "使用 INDICATE 模式")
+                    BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
+                }
+                else -> {
+                    sendFailCallback(callback, QXBleErrorCode.PROPERTY_NOT_SUPPORT, "特征不支持通知或指示")
+                    return
+                }
+            }
+        } else {
+            BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
+        }
+        
+        // 设置描述符值
+        descriptor.value = value
+        
+        // 写入描述符
+        val activity = currentActivity?.get()
+        if (activity != null && ActivityCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            sendFailCallback(callback, QXBleErrorCode.PERMISSION_DENIED, "缺少BLUETOOTH_CONNECT权限")
+            return
+        }
+        
+        val writeSuccess = gatt.writeDescriptor(descriptor)
+        
+        if (writeSuccess) {
+            Log.d(NAME, "CC'D描述符写入请求已发送: enable=$enable, value=${value.contentToString()}")
+            sendSuccessCallback(callback, JSONObject().apply {
+                put("deviceId", deviceMac)
+                put("serviceId", serviceUUID)
+                put("characteristicId", characteristicUUID)
+                put("enabled", enable)
+            }, if (enable) "通知已启用" else "通知已关闭")
+        } else {
+            sendFailCallback(callback, QXBleErrorCode.SYSTEM_ERROR, "CC'D描述符写入失败")
+        }
+    }
 
-    private fun bleNotifyCallback(): BleNotifyCallback<BleDevice> {
+    /**
+     * 通过反射获取 BluetoothGatt 实例
+     * @param deviceMac 设备MAC地址
+     * @return BluetoothGatt实例，失败返回null
+     */
+    private fun getBluetoothGatt(deviceMac: String): BluetoothGatt? {
+        return try {
+            val bleClass = Ble::class.java
+            val bleRequestImplField = bleClass.getDeclaredField("bleRequestImpl")
+            bleRequestImplField.isAccessible = true
+            val bleRequestImpl = bleRequestImplField.get(ble) as? BleRequestImpl<*>
+            bleRequestImpl?.getBluetoothGatt(deviceMac)
+        } catch (e: Exception) {
+            Log.e(NAME, "反射获取BluetoothGatt失败: ${e.message}")
+            null
+        }
+    }
+
+
+    private fun bleNotifyCallback(webView: IBridgeWebView?): BleNotifyCallback<BleDevice> {
         return object : BleNotifyCallback<BleDevice>(){
             override fun onChanged(device: BleDevice?, characteristic: BluetoothGattCharacteristic?) {
                 Log.w(NAME, "notify-onChanged")
+                Log.w(NAME, ByteUtils.toHexString(characteristic?.value))
+                sendBleEvent(
+                    webView,
+                    QXBLEventType.ON_BLE_CHARACTERISTIC_VALUE_CHANGE,
+                    JSONObject().apply {
+                        put("deviceId", device?.bleAddress)
+                        put("value", ByteUtils.toHexString(characteristic?.value))
+                        put("characteristicId", characteristic?.uuid.toString())
+                    }
+                )
             }
 
             override fun onNotifyCanceled(device: BleDevice?) {
