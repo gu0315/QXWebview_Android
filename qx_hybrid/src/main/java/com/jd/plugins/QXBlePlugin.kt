@@ -31,6 +31,7 @@ import com.jd.plugins.ClosureRegistry
 import com.jd.plugins.QXBLEventType
 import com.jd.plugins.QXBleErrorCode
 import com.jd.plugins.QXBleUtils
+import com.jd.plugins.utils.BleDataParser
 import org.json.JSONArray
 import org.json.JSONObject
 import java.lang.ref.WeakReference
@@ -579,194 +580,35 @@ class QXBlePlugin : IBridgePlugin {
 
 
     private fun sendBleData(params: String, callback: IBridgeCallback?) {
-        // 定义局部数据类封装解析参数（替代外部辅助类）
-        data class ParsedParams(
-            val json: JSONObject,
-            val deviceId: String,
-            val serviceId: String,
-            val characteristicId: String,
-            val valueType: String,
-            val value: Any?
-        )
-
         try {
-            // ========== 1. 解析基础参数 ==========
-            val parsedParams = run {
-                val json = JSONObject(params)
-                val deviceId = json.optString("deviceId", "")
-                val serviceId = json.optString("serviceId", "")
-                val characteristicId = json.optString("characteristicId", "")
-                val valueType = json.optString("valueType", "UTF8").uppercase(Locale.getDefault())
-                val value = json.opt("value")
-
-                Log.d(NAME, """
-                解析基础参数成功：
-                - valueType: $valueType
-                - value类型: ${value?.javaClass?.simpleName ?: "null"}
-                - value内容: $value
-            """.trimIndent())
-
-                ParsedParams(json, deviceId, serviceId, characteristicId, valueType, value)
-            }
-
-            val (_, deviceId, serviceId, characteristicId, valueType, value) = parsedParams
-
-            // ========== 2. 基础参数校验 ==========
-            if (deviceId.isEmpty() || serviceId.isEmpty() || characteristicId.isEmpty()) {
+            val parsedData = try {
+                BleDataParser.parseData(params)
+            } catch (e: IllegalArgumentException) {
                 sendFailCallback(
                     callback,
                     QXBleErrorCode.UNKNOWN_ERROR,
-                    "deviceId/serviceId/characteristicId不能为空（deviceId=$deviceId, serviceId=$serviceId, characteristicId=$characteristicId）"
+                    e.message ?: "参数解析失败"
                 )
                 return
             }
 
-            // ========== 3. 获取已连接设备 ==========
-            val targetDevice = ble?.connectedDevices?.find { it.bleAddress == deviceId } ?: run {
-                sendFailCallback(callback, QXBleErrorCode.DEVICE_NOT_FOUND, "设备未连接（deviceId=$deviceId）")
+            val targetDevice = ble?.connectedDevices?.find { it.bleAddress == parsedData.deviceId } ?: run {
+                sendFailCallback(callback, QXBleErrorCode.DEVICE_NOT_FOUND, "设备未连接（deviceId=${parsedData.deviceId}）")
                 return
             }
-
-            // ========== 4. 解析数据（核心逻辑） ==========
-            val data: ByteArray = runCatching {
-                when (valueType) {
-                    // 4.1 BASE64解析
-                    "BASE64" -> {
-                        val valueStr = value?.toString() ?: ""
-                        try {
-                            Base64.decode(valueStr, Base64.DEFAULT)
-                        } catch (e: IllegalArgumentException) {
-                            throw IllegalArgumentException("Base64解码失败：${e.message}", e)
-                        }
-                    }
-
-                    // 4.2 Buffer解析（支持多格式）
-                    "BUFFER" -> {
-                        val jsonArray = when (value) {
-                            is JSONArray -> {
-                                Log.d(NAME, "BUFFER格式：JSONArray，长度=${value.length()}")
-                                value
-                            }
-                            is JSONObject -> {
-                                Log.d(NAME, "BUFFER格式：JSONObject，keys=${value.keys().asSequence().toList()}")
-                                if (value.length() == 0) {
-                                    throw IllegalArgumentException("JSONObject为空，可能ArrayBuffer没有正确传递")
-                                }
-                                val keys = value.keys().asSequence().toList().sortedBy { it.toIntOrNull() ?: 0 }
-                                JSONArray().apply {
-                                    keys.forEach { key -> put(value.getInt(key)) }
-                                }
-                            }
-                            is String -> {
-                                Log.d(NAME, "BUFFER格式：String，内容=$value")
-                                val trimmed = value.trim()
-                                if (trimmed.isEmpty()) {
-                                    throw IllegalArgumentException("Buffer字符串为空")
-                                }
-                                when {
-                                    trimmed.startsWith("[") -> JSONArray(trimmed)
-                                    trimmed.startsWith("{") -> {
-                                        val obj = JSONObject(trimmed)
-                                        if (obj.length() == 0) {
-                                            throw IllegalArgumentException("解析后的JSONObject为空")
-                                        }
-                                        val keys = obj.keys().asSequence().toList().sortedBy { it.toIntOrNull() ?: 0 }
-                                        JSONArray().apply {
-                                            keys.forEach { key -> put(obj.getInt(key)) }
-                                        }
-                                    }
-                                    else -> {
-                                        val parts = trimmed.split(",").map { it.trim() }
-                                        JSONArray(parts)
-                                    }
-                                }
-                            }
-                            null -> throw IllegalArgumentException("value为null，请检查JS端是否正确传递Buffer数据")
-                            else -> throw IllegalArgumentException("BUFFER类型value必须是JSONArray/JSONObject/字符串，当前类型：${value.javaClass.simpleName}")
-                        }
-
-                        if (jsonArray.length() == 0) {
-                            throw IllegalArgumentException("""
-                            BUFFER数据为空。提示：
-                            1. ArrayBuffer需有数据 2. Uint8Array不能为空 3. 建议用Array.from(uint8Array) 4. 或用HEX类型
-                        """.trimIndent())
-                        }
-
-                        Log.d(NAME, "BUFFER解析成功，字节数=${jsonArray.length()}")
-                        ByteArray(jsonArray.length()) { index ->
-                            val intValue = jsonArray.getInt(index)
-                            if (intValue < 0 || intValue > 255) {
-                                throw IllegalArgumentException("第${index}位值${intValue}超出Uint8范围（0-255）")
-                            }
-                            intValue.toByte()
-                        }
-                    }
-
-                    // 4.3 HEX/16进制解析
-                    "HEX", "16进制" -> {
-                        val valueStr = value?.toString() ?: ""
-                        val cleanedHex = valueStr.replace(" ", "").uppercase(Locale.getDefault())
-                        if (cleanedHex.length % 2 != 0) {
-                            throw IllegalArgumentException("HEX字符串长度必须是偶数（当前：${cleanedHex.length}）")
-                        }
-                        try {
-                            ByteArray(cleanedHex.length / 2).apply {
-                                for (i in indices) {
-                                    val startIndex = i * 2
-                                    val hexByte = cleanedHex.substring(startIndex, startIndex + 2)
-                                    this[i] = hexByte.toInt(16).toByte()
-                                }
-                            }
-                        } catch (e: NumberFormatException) {
-                            throw IllegalArgumentException("HEX格式错误：${e.message}", e)
-                        }
-                    }
-
-                    // 4.4 UTF8/TEXT解析
-                    "UTF8", "TEXT" -> {
-                        val valueStr = value?.toString() ?: ""
-                        valueStr.toByteArray(StandardCharsets.UTF_8)
-                    }
-
-                    // 4.5 未知类型默认UTF8
-                    else -> {
-                        Log.w(NAME, "未知的valueType：$valueType，默认按UTF8解析")
-                        val valueStr = value?.toString() ?: ""
-                        valueStr.toByteArray(StandardCharsets.UTF_8)
-                    }
-                }
-            }.getOrElse { e ->
-                sendFailCallback(
-                    callback,
-                    QXBleErrorCode.WRITE_NOT_SUPPORTED,
-                    "${valueType}解析失败：${e.message}"
-                )
-                return
-            }
-
-            // ========== 5. 空数据校验 ==========
-            if (data.isEmpty()) {
-                sendFailCallback(
-                    callback,
-                    QXBleErrorCode.WRITE_NOT_SUPPORTED,
-                    "数据解析后为空：value=$value，type=$valueType"
-                )
-                return
-            }
-
-            // ========== 6. 执行蓝牙写入 ==========
+            
             Log.w(NAME, """
-            开始写入蓝牙数据：
-            - serviceId: $serviceId
-            - characteristicId: $characteristicId
-            - 数据长度: ${data.size}字节
-        """.trimIndent())
+                开始写入蓝牙数据：
+                - serviceId: ${parsedData.serviceId}
+                - characteristicId: ${parsedData.characteristicId}
+                - 数据长度: ${parsedData.data.size}字节
+            """.trimIndent())
 
             ble?.writeByUuid(
                 targetDevice,
-                data,
-                UUID.fromString(serviceId),
-                UUID.fromString(characteristicId),
+                parsedData.data,
+                UUID.fromString(parsedData.serviceId),
+                UUID.fromString(parsedData.characteristicId),
                 object : BleWriteCallback<BleDevice>() {
                     override fun onWriteSuccess(device: BleDevice, characteristic: BluetoothGattCharacteristic) {
                         Log.w(NAME, "写入成功")
