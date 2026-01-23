@@ -28,32 +28,92 @@ import com.jd.jdbridge.base.IBridgePlugin
 import com.jd.jdbridge.base.IBridgeWebView
 import com.jd.jdbridge.base.callJS
 import com.jd.plugins.ClosureRegistry
+import com.jd.plugins.QXBLEventType
+import com.jd.plugins.QXBleErrorCode
+import com.jd.plugins.QXBleUtils
 import org.json.JSONArray
 import org.json.JSONObject
 import java.lang.ref.WeakReference
 import java.util.Locale
 import java.util.UUID
 
+/**
+ * 蓝牙桥接插件核心类
+ * 
+ * 功能概述：
+ * - 作为JS与Native的桥接层，提供完整的BLE操作能力
+ * - 支持蓝牙设备扫描、连接、服务发现、特征读写、通知订阅等核心功能
+ * - 确保跨平台一致性
+ * 
+ * 架构设计：
+ * - 基于Android-BLE库封装底层蓝牙操作
+ * - 使用反射机制访问BluetoothGatt实例，实现高级功能
+ * - 采用事件驱动模型，通过WebView回调通知JS层
+ * 
+ * 线程安全：
+ * - 所有蓝牙操作在主线程执行
+ * - 使用WeakReference避免Activity内存泄漏
+ * 
+ * 作者：顾钱想
+ * 日期：2025/01/23
+ * 版本：1.0.0
+ */
 class QXBlePlugin : IBridgePlugin {
 
-    // 插件名称
-    public val NAME = "QXBlePlugin"
-    // 请求码
+    // ==================== 常量定义 ====================
+    
+    /** 插件名称，用于日志标记和JS调用标识 */
+    val NAME = "QXBlePlugin"
+    
+    /** 蓝牙权限请求码 */
     private val REQUEST_CODE_BLE_PERMISSIONS: Int = 1001
+    
+    /** 蓝牙开启请求码 */
     private val REQUEST_ENABLE_BT = 0x101
-    // 蓝牙实例
+    
+    // ==================== 核心实例 ====================
+    
+    /** 
+     * Android-BLE库实例，负责底层蓝牙操作
+     * 生命周期：从openBluetoothAdapter初始化，到closeBluetoothAdapter释放
+     */
     private var ble: Ble<BleDevice>? = null
+    
+    /** 
+     * 当前Activity弱引用，避免内存泄漏
+     * 用于权限请求、蓝牙开启等需要Activity上下文的操作
+     */
     private var currentActivity: WeakReference<Activity>? = null
+    
+    // ==================== 设备管理 ====================
+    
+    /** 
+     * 已扫描到的设备列表（简化版）
+     * 仅存储BleDevice对象，用于快速查找和连接
+     */
     private val scannedDevices = mutableListOf<BleDevice>()
 
     
-    // 扩展的设备信息存储
+    /**
+     * 蓝牙设备扩展信息数据类
+     * 
+     * 用途：存储扫描过程中获取的完整设备信息，包括RSSI、广播数据等
+     * 
+     * @property device BLE设备对象
+     * @property rssi 信号强度（Received Signal Strength Indicator）
+     * @property scanRecord 原始广播数据（包含厂商数据、服务UUID等）
+     * @property timestamp 扫描时间戳，用于设备去重和排序
+     */
     private data class BluetoothDeviceInfo(
         val device: BleDevice,
         val rssi: Int,
         val scanRecord: ByteArray?,
         val timestamp: Long = System.currentTimeMillis()
     ) {
+        /**
+         * 重写equals方法，确保设备去重逻辑正确
+         * 注意：比较所有字段，包括RSSI和时间戳
+         */
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
             if (javaClass != other?.javaClass) return false
@@ -65,6 +125,9 @@ class QXBlePlugin : IBridgePlugin {
             return true
         }
 
+        /**
+         * 重写hashCode方法，与equals保持一致
+         */
         override fun hashCode(): Int {
             var result = rssi
             result = 31 * result + timestamp.hashCode()
@@ -74,60 +137,34 @@ class QXBlePlugin : IBridgePlugin {
         }
     }
 
+    /** 
+     * 已扫描到的设备完整信息列表
+     * 用于getBluetoothDevices接口返回详细设备信息
+     */
     private val scannedDevicesInfo = mutableListOf<BluetoothDeviceInfo>()
 
-    // 事件类型枚举（对齐iOS）
-    enum class QXBLEventType(val value: String) {
-        ON_BLUETOOTH_DEVICE_FOUND("onBluetoothDeviceFound"),
-        ON_BLE_CONNECTION_STATE_CHANGE("onBLEConnectionStateChange"),
-        ON_BLE_CHARACTERISTIC_VALUE_CHANGE("onBLECharacteristicValueChange"),
-        ON_BLE_NOTIFICATION_STATE_CHANGE("onBLENotificationStateChange"),
-        ON_BLE_WRITE_CHARACTERISTIC_VALUE_RESULT("onBLEWriteCharacteristicValueResult");
-        val prefix: String get() = this.value
-    }
-
-    // 错误码枚举（对齐uni-app标准）
-    enum class QXBleErrorCode(val code: Int, val message: String) {
-        SUCCESS(0, "ok"),
-        NOT_INIT(10000, "not init"),
-        NOT_AVAILABLE(10001, "not available"),
-        NO_DEVICE(10002, "no device"),
-        CONNECTION_FAIL(10003, "connection fail"),
-        NO_SERVICE(10004, "no service"),
-        NO_CHARACTERISTIC(10005, "no characteristic"),
-        NO_CONNECTION(10006, "no connection"),
-        PROPERTY_NOT_SUPPORT(10007, "property not support"),
-        SYSTEM_ERROR(10008, "system error"),
-        SYSTEM_NOT_SUPPORT(10009, "system not support"),
-        ALREADY_CONNECT(10010, "already connect"),
-        NEED_PIN(10011, "need pin"),
-        OPERATE_TIME_OUT(10012, "operate time out"),
-        INVALID_DATA(10013, "invalid_data"),
-
-        BLUETOOTH_NOT_OPEN(-1, "蓝牙未开启"),
-        PERMISSION_DENIED(-2, "蓝牙权限被拒绝，请前往设置开启"),
-        DEVICE_NOT_FOUND(-3, "未找到指定设备"),
-        CONNECT_TIMEOUT(-4, "设备连接超时"),
-        CHARACTERISTIC_NOT_FOUND(-5, "未找到指定特征"),
-        WRITE_NOT_SUPPORTED(-6, "特征不支持写入"),
-        PERMISSION_NOT_DETERMINED(-7, "蓝牙权限未授权，请先授权"),
-        SCAN_NOT_AVAILABLE(-8, "当前无法扫描蓝牙设备"),
-        PERIPHERAL_NIL(-9, "蓝牙外设对象为空"),
-        UNKNOWN_ERROR(-99, "未知错误");
-
-        companion object {
-            fun fromCode(code: Int): QXBleErrorCode {
-                return entries.find { it.code == code } ?: UNKNOWN_ERROR
-            }
-        }
-    }
-
+    // ==================== 插件入口 ====================
+    
+    /**
+     * 插件执行入口（IBridgePlugin接口实现）
+     * 
+     * 功能：根据JS传入的method分发到对应的处理函数
+     * 
+     * @param webView WebView实例，用于JS回调
+     * @param method 方法名，对应uni-app的蓝牙API
+     * @param params JSON格式的参数字符串
+     * @param callback 回调接口，用于返回结果给JS
+     * @return true表示方法已处理，false表示未识别的方法
+     * 
+     * 线程安全：在主线程执行
+     */
     override fun execute(
         webView: IBridgeWebView?,
         method: String?,
         params: String?,
         callback: IBridgeCallback?
     ): Boolean {
+        // 获取Activity上下文并保存为弱引用
         val activity = (webView as? JDWebView)?.context as? Activity
         currentActivity = activity?.let { WeakReference(it) }
         Log.d(NAME, "execute $method")
@@ -255,23 +292,21 @@ class QXBlePlugin : IBridgePlugin {
         }
     }
 
-    /**
-     * 初始化蓝牙
-     */
     private fun initBle(callback: IBridgeCallback?) {
         val activity = currentActivity?.get() ?: run {
             sendFailCallback(callback, QXBleErrorCode.PERIPHERAL_NIL, "当前Activity为空")
             return
         }
         if (checkBlePermissions(activity)) {
-            // 0000FF00-0000-1000-8000-00805F9B34FB
+            // 配置蓝牙参数
             val options = Options().apply {
-                logBleEnable = true
-                throwBleException = true
-                autoConnect = false
-                connectFailedRetryCount = 10
-                connectTimeout = 10000L
-                scanPeriod = 12000L
+                logBleEnable = true                    // 开启日志输出，便于调试
+                throwBleException = true               // 抛出异常而非静默失败
+                autoConnect = false                    // 禁用自动重连（由上层控制）
+                connectFailedRetryCount = 10           // 连接失败重试次数
+                connectTimeout = 10000L                // 连接超时时间（10秒）
+                scanPeriod = 12000L                    // 扫描周期（12秒）
+                // 默认服务UUID（可被具体操作覆盖）
                 uuidService = UUID.fromString("0000ff00-0000-1000-8000-00805f9b34fb")
                 uuidWriteCha = UUID.fromString("0000ff01-0000-1000-8000-00805f9b34fb")
             }
@@ -289,32 +324,38 @@ class QXBlePlugin : IBridgePlugin {
             Toast.makeText(activity, "请授予APP蓝牙权限", Toast.LENGTH_SHORT).show()
         }
     }
-    /**
-     * 开始扫描
-     */
+
     private fun startBleScan(webView: IBridgeWebView?, callback: IBridgeCallback?) {
         val bleInstance = ble ?: run {
             sendFailCallback(callback, QXBleErrorCode.PERIPHERAL_NIL, "蓝牙未初始化")
             return
         }
+        // 清空之前的扫描结果，确保每次扫描都是全新的
         scannedDevices.clear()
         scannedDevicesInfo.clear()
+        
         bleInstance.startScan(object : BleScanCallback<BleDevice>() {
+            /**
+             * 扫描到设备回调
+             * 
+             * @param device 扫描到的BLE设备
+             * @param rssi 信号强度（负数，越接近0信号越强）
+             * @param scanRecord 原始广播数据
+             */
             override fun onLeScan(device: BleDevice, rssi: Int, scanRecord: ByteArray?) {
+                // 设备去重：根据MAC地址判断是否已存在
                 if (!scannedDevices.any { d -> d.bleAddress == device.bleAddress }) {
                     scannedDevices.add(device)
                     scannedDevicesInfo.add(BluetoothDeviceInfo(device, rssi, scanRecord))
-                    // 发送设备发现事件
+                    
+                    // 发送设备发现事件到JS
                     sendBleEvent(
                         webView,
                         QXBLEventType.ON_BLUETOOTH_DEVICE_FOUND,
                         JSONObject().apply {
-                            put("name", device.bleName ?: "")
-                            put("RSSI", rssi)
-                            put("rssi", rssi)
-                            put("deviceId", device.bleAddress)
-                            put("advertisData", scanRecord?.let { android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP) } ?: "")
-                            put("localName", device.bleName ?: "")
+                            put("name", device.bleName ?: "")      // 设备名称（可能为空）
+                            put("rssi", rssi)                      // 信号强度
+                            put("deviceId", device.bleAddress)     // MAC地址（Android唯一标识）
                         }
                     )
                 }
@@ -381,9 +422,13 @@ class QXBlePlugin : IBridgePlugin {
 
             override fun onReady(device: BleDevice) {
                 super.onReady(device)
+                // 返回连接成功结果
                 sendSuccessCallback(
                     callback,
-                    JSONObject().apply { put("deviceId", device.bleAddress) },
+                    JSONObject().apply {
+                        put("deviceId", device.bleAddress)
+                        put("name", device.bleName ?: "未知设备")
+                    },
                     "设备连接成功"
                 )
                 Log.d(NAME, "设备连接成功")
@@ -392,7 +437,7 @@ class QXBlePlugin : IBridgePlugin {
     }
 
     /**
-     * 获取BLE设备的所有服务（对齐iOS的getBLEDeviceServices逻辑）
+     * 获取BLE设备的所有服务
      * @param params JSON参数：{"deviceId":"设备MAC地址"}
      */
     private fun getBLEDeviceServices(params: String, callback: IBridgeCallback?) {
@@ -459,32 +504,23 @@ class QXBlePlugin : IBridgePlugin {
      * 服务发现后（主动/被动），格式化并返回服务数据
      */
     private fun getServicesAfterDiscovery(gatt: BluetoothGatt, deviceId: String, callback: IBridgeCallback?) {
+        // 格式化服务数据
         val servicesArray = JSONArray()
         gatt.services.forEach { service ->
             val serviceJson = JSONObject().apply {
                 put("serviceId", service.uuid.toString())
-                val characteristicsArray = JSONArray()
-                service.characteristics.forEach { characteristic ->
-                    val properties = formatCharacteristicProperties(characteristic.properties)
-                    val charJson = JSONObject().apply {
-                        put("characteristicId", characteristic.uuid.toString())
-                        put("properties", properties)
-                    }
-                    characteristicsArray.put(charJson)
-                }
-                put("characteristics", characteristicsArray)
+                put("isPrimary", service.type == BluetoothGattService.SERVICE_TYPE_PRIMARY)
             }
             servicesArray.put(serviceJson)
         }
+        
         val resultData = JSONObject().apply {
-            put("deviceId", deviceId)
             put("services", servicesArray)
-            put("serviceCount", gatt.services.size)
         }
         sendSuccessCallback(
             callback,
             resultData,
-            "获取设备[$deviceId]服务成功，共${gatt.services.size}个服务"
+            "发现服务成功，共${gatt.services.size}个服务"
         )
         // Log.d(NAME, resultData.toString(2))
     }
@@ -513,13 +549,14 @@ class QXBlePlugin : IBridgePlugin {
                 sendFailCallback(callback, QXBleErrorCode.PERIPHERAL_NIL, "Gatt实例为空")
                 return
             }
+            // 格式化特征数据
             val characteristicsJson = formatGattCharacteristics(gatt.services)
             sendSuccessCallback(
                 callback,
                 JSONObject().apply {
                     put("characteristics", characteristicsJson)
                 },
-                "获取设备特征成功，共${characteristicsJson.length()}个特征"
+                "获取特征成功，共${characteristicsJson.length()}个特征"
             )
         } catch (e: Exception) {
             sendFailCallback(callback, QXBleErrorCode.UNKNOWN_ERROR, "异常：${e.message}")
@@ -633,18 +670,16 @@ class QXBlePlugin : IBridgePlugin {
                 UUID.fromString(characteristicId),
                 object : BleWriteCallback<BleDevice>() {
                     override fun onWriteSuccess(device: BleDevice, characteristic: BluetoothGattCharacteristic) {
-                        sendBleEvent(
-                            null,
-                            QXBLEventType.ON_BLE_WRITE_CHARACTERISTIC_VALUE_RESULT,
-                            JSONObject().apply {
-                                put("deviceId", device.bleAddress)
-                                put("serviceId", serviceId)
-                                put("characteristicId", characteristic.uuid.toString())
-                                put("success", true)
-                            }
-                        )
                         Log.w(NAME, "写入成功")
-                        sendSuccessCallback(callback, null, "数据发送成功")
+                        // 返回写入成功结果
+                        sendSuccessCallback(
+                            callback,
+                            JSONObject().apply {
+                                put("characteristicId", characteristic.uuid.toString())
+                                put("value", ByteUtils.toHexString(characteristic.value))
+                            },
+                            "写入特征值成功"
+                        )
                     }
                     override fun onWriteFailed(device: BleDevice, failedCode: Int) {
                         Log.w(NAME, "写入失败-------$failedCode")
@@ -665,10 +700,6 @@ class QXBlePlugin : IBridgePlugin {
             e.printStackTrace()
         }
     }
-
-
-
-
 
     private fun notifyBLECharacteristicValueChange(params: String, callback: IBridgeCallback?, webView: IBridgeWebView?) {
         try {
@@ -818,12 +849,15 @@ class QXBlePlugin : IBridgePlugin {
         
         if (writeSuccess) {
             Log.d(NAME, "CC'D描述符写入请求已发送: enable=$enable, value=${value.contentToString()}")
-            sendSuccessCallback(callback, JSONObject().apply {
-                put("deviceId", deviceMac)
-                put("serviceId", serviceUUID)
-                put("characteristicId", characteristicUUID)
-                put("enabled", enable)
-            }, if (enable) "通知已启用" else "通知已关闭")
+            // 返回通知设置成功结果
+            sendSuccessCallback(
+                callback,
+                JSONObject().apply {
+                    put("characteristicId", characteristicUUID)
+                    put("enabled", enable)
+                },
+                if (enable) "通知已启用" else "通知已关闭"
+            )
         } else {
             sendFailCallback(callback, QXBleErrorCode.SYSTEM_ERROR, "CC'D描述符写入失败")
         }
@@ -846,7 +880,6 @@ class QXBlePlugin : IBridgePlugin {
             null
         }
     }
-
 
     private fun bleNotifyCallback(webView: IBridgeWebView?): BleNotifyCallback<BleDevice> {
         return object : BleNotifyCallback<BleDevice>(){
@@ -990,15 +1023,8 @@ class QXBlePlugin : IBridgePlugin {
                 val device = deviceInfo.device
                 val deviceJson = JSONObject().apply {
                     put("name", device.bleName ?: "")
-                    put("deviceId", device.bleAddress)
-                    put("RSSI", deviceInfo.rssi)
                     put("rssi", deviceInfo.rssi)
-                    put("advertisData", deviceInfo.scanRecord?.let { 
-                        android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP) 
-                    } ?: "")
-                    put("advertisServiceUUIDs", JSONArray()) // 需要解析 scanRecord 获取
-                    put("localName", device.bleName ?: "")
-                    put("serviceData", JSONObject()) // 需要解析 scanRecord 获取
+                    put("deviceId", device.bleAddress)
                 }
                 devicesArray.put(deviceJson)
             }
@@ -1009,13 +1035,8 @@ class QXBlePlugin : IBridgePlugin {
                 if (!isAlreadyInList) {
                     val deviceJson = JSONObject().apply {
                         put("name", connectedDevice.bleName ?: "")
+                        put("rssi", 0) // 已连接设备没有实时 RSSI
                         put("deviceId", connectedDevice.bleAddress)
-                        put("RSSI", 0) // 已连接设备没有实时 RSSI
-                        put("rssi", 0)
-                        put("advertisData", "")
-                        put("advertisServiceUUIDs", JSONArray())
-                        put("localName", connectedDevice.bleName ?: "")
-                        put("serviceData", JSONObject())
                     }
                     devicesArray.put(deviceJson)
                 }
@@ -1151,14 +1172,12 @@ class QXBlePlugin : IBridgePlugin {
             val serviceId = service.uuid.toString()
             service.characteristics.forEach characteristicLoop@ { characteristic ->
                 try {
-                    val properties = formatCharacteristicProperties(characteristic.properties)
+                    val properties = QXBleUtils.formatCharacteristicProperties(characteristic.properties)
                     val charJson = JSONObject().apply {
                         put("serviceId", serviceId)
                         put("characteristicId", characteristic.uuid.toString())
                         put("properties", properties)
-                        put("value", characteristic.value?.let {
-                            Base64.encodeToString(it, Base64.NO_WRAP)
-                        } ?: "")
+                        put("isNotifying", false) // Android需要单独跟踪通知状态
                     }
                     characteristicsArray.put(charJson)
                 } catch (e: Exception) {
@@ -1168,17 +1187,6 @@ class QXBlePlugin : IBridgePlugin {
             }
         }
         return characteristicsArray
-    }
-
-    private fun formatCharacteristicProperties(properties: Int): JSONArray {
-        val props = mutableListOf<String>()
-        if (properties <= 0) return JSONArray(props)
-        if ((properties and BluetoothGattCharacteristic.PROPERTY_READ) != 0) props.add("read")
-        if ((properties and BluetoothGattCharacteristic.PROPERTY_WRITE) != 0) props.add("write")
-        if ((properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0) props.add("writeWithoutResponse")
-        if ((properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0) props.add("notify")
-        if ((properties and BluetoothGattCharacteristic.PROPERTY_INDICATE) != 0) props.add("indicate")
-        return JSONArray(props)
     }
 
     fun onDestroy() {
