@@ -38,7 +38,7 @@ public class FirstFragment extends Fragment {
 
         binding.buttonWebview.setOnClickListener(v -> {
             Intent intent = new Intent(requireContext(), QXWebViewActivity.class);
-            intent.putExtra(QXWebViewActivity.EXTRA_URL, "http://192.168.5.71:5173/");
+            intent.putExtra(QXWebViewActivity.EXTRA_URL, "http://192.168.31.137:5173/");
             startActivity(intent);
         });
     }

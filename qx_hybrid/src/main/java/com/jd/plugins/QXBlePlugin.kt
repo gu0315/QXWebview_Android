@@ -8,7 +8,6 @@ import android.bluetooth.BluetoothGattService
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import android.util.Base64
 import android.util.Log
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
@@ -21,7 +20,6 @@ import cn.com.heaton.blelibrary.ble.callback.BleNotifyCallback
 import cn.com.heaton.blelibrary.ble.callback.BleScanCallback
 import cn.com.heaton.blelibrary.ble.callback.BleWriteCallback
 import cn.com.heaton.blelibrary.ble.model.BleDevice
-import cn.com.heaton.blelibrary.ble.utils.ByteUtils
 import com.jd.hybrid.JDWebView
 import com.jd.jdbridge.base.IBridgeCallback
 import com.jd.jdbridge.base.IBridgePlugin
@@ -32,6 +30,7 @@ import com.jd.plugins.QXBLEventType
 import com.jd.plugins.QXBleErrorCode
 import com.jd.plugins.QXBleUtils
 import com.jd.plugins.utils.BleDataParser
+import com.jd.plugins.utils.HexDataConverter
 import org.json.JSONArray
 import org.json.JSONObject
 import java.lang.ref.WeakReference
@@ -72,8 +71,7 @@ class QXBlePlugin : IBridgePlugin {
     
     /** 蓝牙开启请求码 */
     private val REQUEST_ENABLE_BT = 0x101
-    
-    // ==================== 核心实例 ====================
+
     
     /** 
      * Android-BLE库实例，负责底层蓝牙操作
@@ -145,21 +143,7 @@ class QXBlePlugin : IBridgePlugin {
      */
     private val scannedDevicesInfo = mutableListOf<BluetoothDeviceInfo>()
 
-    // ==================== 插件入口 ====================
-    
-    /**
-     * 插件执行入口（IBridgePlugin接口实现）
-     * 
-     * 功能：根据JS传入的method分发到对应的处理函数
-     * 
-     * @param webView WebView实例，用于JS回调
-     * @param method 方法名，对应uni-app的蓝牙API
-     * @param params JSON格式的参数字符串
-     * @param callback 回调接口，用于返回结果给JS
-     * @return true表示方法已处理，false表示未识别的方法
-     * 
-     * 线程安全：在主线程执行
-     */
+
     override fun execute(
         webView: IBridgeWebView?,
         method: String?,
@@ -179,7 +163,15 @@ class QXBlePlugin : IBridgePlugin {
             }
             // 开始扫描蓝牙设备
             "startBluetoothDevicesDiscovery" -> {
-                startBleScan(webView, callback)
+                params?.let {
+                    try {
+                        val json = JSONObject(it)
+                        startBleScan(json, webView, callback)
+                    } catch (e: Exception) {
+                        callback?.onError("参数解析失败: ${e.message}")
+                    }
+                }
+
                 true
             }
             // 停止扫描蓝牙设备
@@ -327,7 +319,7 @@ class QXBlePlugin : IBridgePlugin {
         }
     }
 
-    private fun startBleScan(webView: IBridgeWebView?, callback: IBridgeCallback?) {
+    private fun startBleScan(jsonParams: JSONObject, webView: IBridgeWebView?, callback: IBridgeCallback?) {
         val bleInstance = ble ?: run {
             sendFailCallback(callback, QXBleErrorCode.PERIPHERAL_NIL, "蓝牙未初始化")
             return
@@ -335,7 +327,6 @@ class QXBlePlugin : IBridgePlugin {
         // 清空之前的扫描结果，确保每次扫描都是全新的
         scannedDevices.clear()
         scannedDevicesInfo.clear()
-        
         bleInstance.startScan(object : BleScanCallback<BleDevice>() {
             /**
              * 扫描到设备回调
@@ -412,6 +403,7 @@ class QXBlePlugin : IBridgePlugin {
                     JSONObject().apply {
                         put("isConnected", device.isConnected)
                         put("deviceId", device.bleAddress)
+                        put("name", device.bleName)
                     }
                 )
             }
@@ -617,7 +609,7 @@ class QXBlePlugin : IBridgePlugin {
                             JSONObject().apply {
                                 put("characteristicId", characteristic.uuid.toString())
                                 put("value", characteristic.value?.let {
-                                    Base64.encodeToString(it, Base64.NO_WRAP)
+                                    HexDataConverter.hexEncodedString(characteristic.value, false)
                                 } ?: "")
                             },
                             "写入特征值成功"
@@ -831,13 +823,13 @@ class QXBlePlugin : IBridgePlugin {
         return object : BleNotifyCallback<BleDevice>(){
             override fun onChanged(device: BleDevice?, characteristic: BluetoothGattCharacteristic?) {
                 Log.w(NAME, "notify-onChanged")
-                Log.w(NAME, ByteUtils.toHexString(characteristic?.value))
+                Log.w(NAME, HexDataConverter.hexEncodedString(characteristic?.value, false))
                 sendBleEvent(
                     webView,
                     QXBLEventType.ON_BLE_CHARACTERISTIC_VALUE_CHANGE,
                     JSONObject().apply {
                         put("deviceId", device?.bleAddress)
-                        put("value", ByteUtils.toHexString(characteristic?.value))
+                        put("value", HexDataConverter.hexEncodedString(characteristic?.value, false))
                         put("characteristicId", characteristic?.uuid.toString())
                     }
                 )

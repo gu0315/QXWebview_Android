@@ -248,3 +248,104 @@ object BleDataParser {
         }
     }
 }
+
+/**
+ * 字节数组 ↔ 十六进制字符串转换工具类
+ */
+object HexDataConverter {
+    /**
+     * 【标准】字节数组转纯十六进制字符串
+     * @param bytes 待转换字节数组（null/空数组返回空字符串）
+     * @param uppercase 是否大写（默认 true，符合蓝牙/网络协议通用规范）
+     * @return 纯十六进制字符串，示例：byteArrayOf(0x68, 0x65) → "6865"
+     */
+    @JvmStatic
+    fun hexEncodedString(bytes: ByteArray?, uppercase: Boolean = false): String {
+        if (bytes == null || bytes.isEmpty()) {
+            return ""
+        }
+        val format = if (uppercase) "%02X" else "%02x"
+        return buildString {
+            bytes.forEach { byte ->
+                // 对齐 Swift 的 $0 & 0xFF，解决 Byte 负数问题
+                append(String.format(format, byte.toUInt() and 0xFFu))
+            }
+        }
+    }
+
+    /**
+     * 字节数组转带格式的十六进制数组字符串（[xx, xx, xx]）
+     * @param bytes 待转换字节数组（null/空数组返回"[]"）
+     * @param uppercase 是否大写（默认 false，日志更易读）
+     * @return 格式化字符串，示例：byteArrayOf(0x68, 0x65) → "[68, 65]"
+     */
+    @JvmStatic
+    fun hexArrayEncodedString(bytes: ByteArray?, uppercase: Boolean = false): String {
+        if (bytes == null || bytes.isEmpty()) {
+            return "[]"
+        }
+        val format = if (uppercase) "%02X" else "%02x"
+        return buildString {
+            append("[")
+            bytes.forEachIndexed { index, byte ->
+                // 对齐 Swift 的 $0 & 0xFF
+                append(String.format(format, byte.toUInt() and 0xFFu))
+                if (index != bytes.lastIndex) {
+                    append(", ")
+                }
+            }
+            append("]")
+        }
+    }
+
+    /**
+     * 纯十六进制字符串解析为字节数组
+     * @param hexString 纯十六进制字符串（无空格/符号），示例："6865"
+     * @return 解析后的字节数组，解析失败返回 null
+     */
+    @JvmStatic
+    fun fromHexEncodedString(hexString: String?): ByteArray? {
+        val cleanedString = hexString?.trim() ?: return null
+        // 空字符串返回空数组（对齐 Swift 逻辑）
+        if (cleanedString.isEmpty()) {
+            return ByteArray(0)
+        }
+        // 确保字符数为偶数（每2个字符对应1个字节）
+        if (cleanedString.length % 2 != 0) {
+            return null
+        }
+
+        val result = ByteArray(cleanedString.length / 2)
+        var index = 0
+        while (index < cleanedString.length) {
+            val endIndex = index + 2
+            // 转小写：兼容大小写输入（对齐 Swift 的 lowercased()）
+            val hexSub = cleanedString.substring(index, endIndex).lowercase()
+            try {
+                // 解析十六进制字符为字节
+                val byteValue = hexSub.toUInt(16) and 0xFFu
+                result[index / 2] = byteValue.toByte()
+            } catch (e: NumberFormatException) {
+                // 解析失败返回 null（对齐 Swift 的 nil）
+                return null
+            }
+            index += 2
+        }
+        return result
+    }
+
+    /**
+     * 小写纯十六进制字符串
+     */
+    @JvmStatic
+    val ByteArray.hexString: String
+        get() = hexEncodedString(this, false)
+
+    /**
+     * 小写数组格式十六进制字符串
+     */
+    @JvmStatic
+    val ByteArray.hexArrayString: String
+        get() = hexArrayEncodedString(this, false)
+}
+
