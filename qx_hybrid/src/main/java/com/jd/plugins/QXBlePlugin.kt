@@ -5,11 +5,14 @@ import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothGattService
+import android.bluetooth.le.ScanFilter
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.ParcelUuid
 import android.util.Log
 import android.widget.Toast
+import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import cn.com.heaton.blelibrary.ble.Ble
@@ -20,6 +23,7 @@ import cn.com.heaton.blelibrary.ble.callback.BleNotifyCallback
 import cn.com.heaton.blelibrary.ble.callback.BleScanCallback
 import cn.com.heaton.blelibrary.ble.callback.BleWriteCallback
 import cn.com.heaton.blelibrary.ble.model.BleDevice
+import cn.com.heaton.blelibrary.ble.utils.UuidUtils
 import com.jd.hybrid.JDWebView
 import com.jd.jdbridge.base.IBridgeCallback
 import com.jd.jdbridge.base.IBridgePlugin
@@ -300,6 +304,9 @@ class QXBlePlugin : IBridgePlugin {
                 connectFailedRetryCount = 10           // 连接失败重试次数
                 connectTimeout = 10000L                // 连接超时时间（10秒）
                 scanPeriod = 12000L                    // 扫描周期（12秒）
+                /*if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    scanFilter = buildScanFilter()
+                }*/
                 // 默认服务UUID（可被具体操作覆盖）
                 uuidService = UUID.fromString("0000ff00-0000-1000-8000-00805f9b34fb")
                 uuidWriteCha = UUID.fromString("0000ff01-0000-1000-8000-00805f9b34fb")
@@ -319,6 +326,13 @@ class QXBlePlugin : IBridgePlugin {
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
+    private fun buildScanFilter(): ScanFilter {
+        return ScanFilter.Builder().apply {
+            setServiceUuid(ParcelUuid.fromString(UuidUtils.uuid16To128("180A")))
+        }.build()
+    }
+
     private fun startBleScan(jsonParams: JSONObject, webView: IBridgeWebView?, callback: IBridgeCallback?) {
         val bleInstance = ble ?: run {
             sendFailCallback(callback, QXBleErrorCode.PERIPHERAL_NIL, "蓝牙未初始化")
@@ -330,7 +344,7 @@ class QXBlePlugin : IBridgePlugin {
         bleInstance.startScan(object : BleScanCallback<BleDevice>() {
             /**
              * 扫描到设备回调
-             * 
+             *
              * @param device 扫描到的BLE设备
              * @param rssi 信号强度（负数，越接近0信号越强）
              * @param scanRecord 原始广播数据
@@ -370,7 +384,7 @@ class QXBlePlugin : IBridgePlugin {
                 )
             }
         })
-        sendSuccessCallback(callback, null, "开始扫描蓝牙设备")
+        callback?.onSuccess(JSONObject().apply { put("errMsg", "startBluetoothDevicesDiscovery:ok") })
     }
 
     /**
