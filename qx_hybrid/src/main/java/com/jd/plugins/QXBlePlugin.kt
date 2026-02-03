@@ -442,11 +442,9 @@ class QXBlePlugin : IBridgePlugin {
 
             override fun onReady(device: BleDevice) {
                 super.onReady(device)
-
                 // 连接成功后自动请求更大的MTU
-                Log.d(NAME, "设备连接成功，开始请求MTU")
-                requestMtu(device.bleAddress, 98, null)
-
+                //Log.d(NAME, "开始请求MTU")
+                //requestMtu(device.bleAddress, 98, null)
                 // 返回连接成功结果
                 sendSuccessCallback(
                     callback,
