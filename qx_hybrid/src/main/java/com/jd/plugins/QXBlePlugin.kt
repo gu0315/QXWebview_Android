@@ -3,7 +3,6 @@ import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCharacteristic
-import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothGattService
 import android.bluetooth.le.ScanFilter
 import android.content.Intent
@@ -44,21 +43,21 @@ import java.util.UUID
 
 /**
  * 蓝牙桥接插件核心类
- * 
+ *
  * 功能概述：
  * - 作为JS与Native的桥接层，提供完整的BLE操作能力
  * - 支持蓝牙设备扫描、连接、服务发现、特征读写、通知订阅等核心功能
  * - 确保跨平台一致性
- * 
+ *
  * 架构设计：
  * - 基于Android-BLE库封装底层蓝牙操作
  * - 使用反射机制访问BluetoothGatt实例，实现高级功能
  * - 采用事件驱动模型，通过WebView回调通知JS层
- * 
+ *
  * 线程安全：
  * - 所有蓝牙操作在主线程执行
  * - 使用WeakReference避免Activity内存泄漏
- * 
+ *
  * 作者：顾钱想
  * 日期：2025/01/23
  * 版本：1.0.0
@@ -66,43 +65,43 @@ import java.util.UUID
 class QXBlePlugin : IBridgePlugin {
 
     // ==================== 常量定义 ====================
-    
+
     /** 插件名称，用于日志标记和JS调用标识 */
     val NAME = "QXBlePlugin"
-    
+
     /** 蓝牙权限请求码 */
     private val REQUEST_CODE_BLE_PERMISSIONS: Int = 1001
-    
+
     /** 蓝牙开启请求码 */
     private val REQUEST_ENABLE_BT = 0x101
 
-    
-    /** 
+
+    /**
      * Android-BLE库实例，负责底层蓝牙操作
      * 生命周期：从openBluetoothAdapter初始化，到closeBluetoothAdapter释放
      */
     private var ble: Ble<BleDevice>? = null
-    
-    /** 
+
+    /**
      * 当前Activity弱引用，避免内存泄漏
      * 用于权限请求、蓝牙开启等需要Activity上下文的操作
      */
     private var currentActivity: WeakReference<Activity>? = null
-    
+
     // ==================== 设备管理 ====================
-    
-    /** 
+
+    /**
      * 已扫描到的设备列表（简化版）
      * 仅存储BleDevice对象，用于快速查找和连接
      */
     private val scannedDevices = mutableListOf<BleDevice>()
 
-    
+
     /**
      * 蓝牙设备扩展信息数据类
-     * 
+     *
      * 用途：存储扫描过程中获取的完整设备信息，包括RSSI、广播数据等
-     * 
+     *
      * @property device BLE设备对象
      * @property rssi 信号强度（Received Signal Strength Indicator）
      * @property scanRecord 原始广播数据（包含厂商数据、服务UUID等）
@@ -141,7 +140,7 @@ class QXBlePlugin : IBridgePlugin {
         }
     }
 
-    /** 
+    /**
      * 已扫描到的设备完整信息列表
      * 用于getBluetoothDevices接口返回详细设备信息
      */
@@ -260,6 +259,20 @@ class QXBlePlugin : IBridgePlugin {
                 }
                 true
             }
+            // 请求更大的MTU
+            "requestBLEMtu" -> {
+                params?.let {
+                    try {
+                        val json = JSONObject(it)
+                        val deviceId = json.getString("deviceId")
+                        val mtu = json.optInt("mtu", 98)
+                        requestMtu(deviceId, mtu, callback)
+                    } catch (e: Exception) {
+                        callback?.onError("参数解析失败: ${e.message}")
+                    }
+                }
+                true
+            }
             // 开启/关闭特征值通知
             "notifyBLECharacteristicValueChange" -> {
                 params?.let {
@@ -355,7 +368,7 @@ class QXBlePlugin : IBridgePlugin {
                 if (!scannedDevices.any { d -> d.bleAddress == device.bleAddress }) {
                     scannedDevices.add(device)
                     scannedDevicesInfo.add(BluetoothDeviceInfo(device, rssi, scanRecord))
-                    
+
                     // 发送设备发现事件到JS
                     sendBleEvent(
                         webView,
@@ -429,6 +442,11 @@ class QXBlePlugin : IBridgePlugin {
 
             override fun onReady(device: BleDevice) {
                 super.onReady(device)
+
+                // 连接成功后自动请求更大的MTU
+                Log.d(NAME, "设备连接成功，开始请求MTU")
+                requestMtu(device.bleAddress, 98, null)
+
                 // 返回连接成功结果
                 sendSuccessCallback(
                     callback,
@@ -520,7 +538,7 @@ class QXBlePlugin : IBridgePlugin {
             }
             servicesArray.put(serviceJson)
         }
-        
+
         val resultData = JSONObject().apply {
             put("services", servicesArray)
         }
@@ -603,7 +621,7 @@ class QXBlePlugin : IBridgePlugin {
                 sendFailCallback(callback, QXBleErrorCode.DEVICE_NOT_FOUND, "设备未连接（deviceId=${parsedData.deviceId}）")
                 return
             }
-            
+
             Log.w(NAME, """
                 开始写入蓝牙数据：
                 - serviceId: ${parsedData.serviceId}
@@ -611,19 +629,6 @@ class QXBlePlugin : IBridgePlugin {
                 - 数据长度: ${parsedData.data.size}字节
                 - 数据: ${ByteUtils.bytes2HexStr(parsedData.data)}
             """.trimIndent())
-
-//            val testFrameData: ByteArray = byteArrayOf(
-//                0x7e.toByte(), 0xdb.toByte(), 0x01.toByte(), 0x00.toByte(),
-//                0x00.toByte(), 0x01.toByte(), 0x00.toByte(), 0x01.toByte(),
-//                0x00.toByte(), 0x14.toByte(), 0x01.toByte(), 0x00.toByte(),
-//                0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(),
-//                0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(),
-//                0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(),
-//                0x00.toByte(), 0x00.toByte(), 0x69.toByte(), 0x81.toByte(),
-//                0xa4.toByte(), 0xe4.toByte(), 0xa9.toByte(), 0x7e.toByte()
-//            )
-
-
 
             ble?.writeByUuid(
                 targetDevice,
@@ -679,8 +684,7 @@ class QXBlePlugin : IBridgePlugin {
                 sendFailCallback(callback, QXBleErrorCode.DEVICE_NOT_FOUND, "设备未连接")
                 return
             }
-            // 启用或关闭通知
-            enableCharacteristicNotification(deviceMac, serviceUUID, characteristicUUID, enable, callback)
+            // TODO 启用或关闭通知 00002902-0000-1000-8000-00805f9b34fb
             // 注册通知回调监听
             ble?.enableNotifyByUuid(device, enable, UUID.fromString(serviceUUID), UUID.fromString(characteristicUUID), bleNotifyCallback(webView))
         } catch (e: Exception) {
@@ -689,137 +693,8 @@ class QXBlePlugin : IBridgePlugin {
         }
     }
 
-    /**
-     * 启用或关闭特征通知/指示
-     * @param deviceMac 设备MAC地址
-     * @param serviceUUID 服务UUID
-     * @param characteristicUUID 特征UUID
-     * @param enable true=启用，false=关闭
-     * @param callback 回调
-     */
-    private fun enableCharacteristicNotification(
-        deviceMac: String,
-        serviceUUID: String,
-        characteristicUUID: String,
-        enable: Boolean,
-        callback: IBridgeCallback?
-    ) {
-        try {
-            // 获取 Gatt 实例
-            val gatt = getBluetoothGatt(deviceMac) ?: run {
-                sendFailCallback(callback, QXBleErrorCode.PERIPHERAL_NIL, "Gatt实例为空")
-                return
-            }
-            
-            // 查找服务
-            val service = gatt.getService(UUID.fromString(serviceUUID)) ?: run {
-                sendFailCallback(callback, QXBleErrorCode.NO_SERVICE, "未找到服务: $serviceUUID")
-                return
-            }
-            
-            // 查找特征
-            val characteristic = service.getCharacteristic(UUID.fromString(characteristicUUID)) ?: run {
-                sendFailCallback(callback, QXBleErrorCode.NO_CHARACTERISTIC, "未找到特征: $characteristicUUID")
-                return
-            }
-            
-            // 检查权限
-            val activity = currentActivity?.get() ?: run {
-                sendFailCallback(callback, QXBleErrorCode.PERIPHERAL_NIL, "当前Activity为空")
-                return
-            }
-            
-            if (ActivityCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-                sendFailCallback(callback, QXBleErrorCode.PERMISSION_DENIED, "缺少BLUETOOTH_CONNECT权限")
-                return
-            }
-            
-            // 启用本地通知
-            val success = gatt.setCharacteristicNotification(characteristic, enable)
-            if (!success) {
-                sendFailCallback(callback, QXBleErrorCode.PROPERTY_NOT_SUPPORT, "启用本地通知失败")
-                return
-            }
-            // 写入 CC'D 描述符
-            writeCCCDDescriptor(gatt, characteristic, enable, deviceMac, serviceUUID, characteristicUUID, callback)
-        } catch (e: Exception) {
-            sendFailCallback(callback, QXBleErrorCode.UNKNOWN_ERROR, "启用通知异常：${e.message}")
-            e.printStackTrace()
-        }
-    }
 
-    /**
-     * 写入 CC'D (Client Characteristic Configuration Descriptor) 描述符
-     * @param gatt BluetoothGatt实例
-     * @param characteristic 特征对象
-     * @param enable true=启用，false=关闭
-     * @param deviceMac 设备MAC地址
-     * @param serviceUUID 服务UUID
-     * @param characteristicUUID 特征UUID
-     * @param callback 回调
-     */
-    private fun writeCCCDDescriptor(
-        gatt: BluetoothGatt,
-        characteristic: BluetoothGattCharacteristic,
-        enable: Boolean,
-        deviceMac: String,
-        serviceUUID: String,
-        characteristicUUID: String,
-        callback: IBridgeCallback?
-    ) {
-        // CC'D 标准 UUID
-        val ccdUUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
-        val descriptor = characteristic.getDescriptor(ccdUUID) ?: run {
-            sendFailCallback(callback, QXBleErrorCode.NO_CHARACTERISTIC, "未找到CC'D描述符")
-            return
-        }
-        // 根据特征属性选择启用通知或指示
-        val value = if (enable) {
-            when {
-                (characteristic.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0 -> {
-                    Log.d(NAME, "使用 NOTIFY 模式")
-                    BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                }
-                (characteristic.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE) != 0 -> {
-                    Log.d(NAME, "使用 INDICATE 模式")
-                    BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
-                }
-                else -> {
-                    sendFailCallback(callback, QXBleErrorCode.PROPERTY_NOT_SUPPORT, "特征不支持通知或指示")
-                    return
-                }
-            }
-        } else {
-            BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
-        }
-        
-        // 设置描述符值
-        descriptor.value = value
-        
-        // 写入描述符
-        val activity = currentActivity?.get()
-        if (activity != null && ActivityCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-            sendFailCallback(callback, QXBleErrorCode.PERMISSION_DENIED, "缺少BLUETOOTH_CONNECT权限")
-            return
-        }
-        
-        val writeSuccess = gatt.writeDescriptor(descriptor)
-        // TODO gu
-        if (writeSuccess) {
-            Log.d(NAME, "CC'D描述符写入请求已发送: enable=$enable, value=${value.contentToString()}")
-            // 返回通知设置成功结果
-            sendSuccessCallback(
-                callback,
-                JSONObject().apply {
-                    put("characteristicId", characteristicUUID)
-                    put("isNotifying", enable)
-                },
-                if (enable) "通知已启用" else "通知已关闭"
-            )
-        } else {
-            sendFailCallback(callback, QXBleErrorCode.SYSTEM_ERROR, "CC'D描述符写入失败")
-        }
-    }
+
 
     /**
      * 通过反射获取 BluetoothGatt 实例
@@ -892,7 +767,7 @@ class QXBlePlugin : IBridgePlugin {
                 "蓝牙适配器已关闭"
             )
             Log.d(NAME, "蓝牙适配器已关闭，所有连接已断开，资源已释放")
-            
+
         } catch (e: Exception) {
             sendFailCallback(
                 callback,
@@ -918,10 +793,10 @@ class QXBlePlugin : IBridgePlugin {
             // 检查蓝牙权限
             val hasPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 ContextCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
-                ContextCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+                        ContextCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
             } else {
                 ContextCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH) == PackageManager.PERMISSION_GRANTED &&
-                ContextCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH_ADMIN) == PackageManager.PERMISSION_GRANTED
+                        ContextCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH_ADMIN) == PackageManager.PERMISSION_GRANTED
             }
             if (!hasPermissions) {
                 sendFailCallback(callback, QXBleErrorCode.SYSTEM_ERROR, "蓝牙权限未授权")
@@ -988,7 +863,7 @@ class QXBlePlugin : IBridgePlugin {
                 }
                 devicesArray.put(deviceJson)
             }
-            
+
             // 添加已连接的设备
             ble?.connectedDevices?.forEach { connectedDevice ->
                 val isAlreadyInList = scannedDevicesInfo.any { it.device.bleAddress == connectedDevice.bleAddress }
@@ -1147,6 +1022,41 @@ class QXBlePlugin : IBridgePlugin {
             }
         }
         return characteristicsArray
+    }
+
+    /**
+     * 请求更大的MTU
+     * @param deviceId 设备MAC地址
+     * @param requestedMtu 请求的MTU大小
+     * @param callback 回调
+     */
+    private fun requestMtu(deviceId: String, requestedMtu: Int = 98, callback: IBridgeCallback?) {
+        try {
+            ble?.setMTU(deviceId, requestedMtu, object : cn.com.heaton.blelibrary.ble.callback.BleMtuCallback<BleDevice>() {
+                override fun onMtuChanged(device: BleDevice?, mtu: Int, status: Int) {
+                    if (status == 0) { // GATT_SUCCESS
+                        Log.d(NAME, "MTU协商成功: $mtu")
+                        sendSuccessCallback(
+                            callback,
+                            JSONObject().apply {
+                                put("deviceId", deviceId)
+                                put("requestedMtu", requestedMtu)
+                                put("actualMtu", mtu)
+                            },
+                            "MTU协商成功，实际大小: ${mtu}字节"
+                        )
+                    } else {
+                        Log.e(NAME, "MTU协商失败，状态码: $status")
+                        sendFailCallback(callback, QXBleErrorCode.SYSTEM_ERROR, "MTU协商失败，状态码: $status")
+                    }
+                }
+            })
+
+            Log.d(NAME, "MTU请求已发送，请求大小: $requestedMtu")
+        } catch (e: Exception) {
+            sendFailCallback(callback, QXBleErrorCode.UNKNOWN_ERROR, "MTU请求异常: ${e.message}")
+            Log.e(NAME, "MTU请求异常", e)
+        }
     }
 
     fun onDestroy() {
