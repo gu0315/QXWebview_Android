@@ -23,6 +23,7 @@ import cn.com.heaton.blelibrary.ble.callback.BleNotifyCallback
 import cn.com.heaton.blelibrary.ble.callback.BleScanCallback
 import cn.com.heaton.blelibrary.ble.callback.BleWriteCallback
 import cn.com.heaton.blelibrary.ble.model.BleDevice
+import cn.com.heaton.blelibrary.ble.utils.ByteUtils
 import cn.com.heaton.blelibrary.ble.utils.UuidUtils
 import com.jd.hybrid.JDWebView
 import com.jd.jdbridge.base.IBridgeCallback
@@ -34,7 +35,6 @@ import com.jd.plugins.QXBLEventType
 import com.jd.plugins.QXBleErrorCode
 import com.jd.plugins.QXBleUtils
 import com.jd.plugins.utils.BleDataParser
-import com.jd.plugins.utils.HexDataConverter
 import org.json.JSONArray
 import org.json.JSONObject
 import java.lang.ref.WeakReference
@@ -310,6 +310,7 @@ class QXBlePlugin : IBridgePlugin {
                 // 默认服务UUID（可被具体操作覆盖）
                 uuidService = UUID.fromString("0000ff00-0000-1000-8000-00805f9b34fb")
                 uuidWriteCha = UUID.fromString("0000ff01-0000-1000-8000-00805f9b34fb")
+                uuidNotifyCha = UUID.fromString("0000ff02-0000-1000-8000-00805f9b34fb")
             }
             ble = Ble.create(activity.applicationContext, options, object : Ble.InitCallback {
                 override fun success() {
@@ -608,7 +609,21 @@ class QXBlePlugin : IBridgePlugin {
                 - serviceId: ${parsedData.serviceId}
                 - characteristicId: ${parsedData.characteristicId}
                 - 数据长度: ${parsedData.data.size}字节
+                - 数据: ${ByteUtils.bytes2HexStr(parsedData.data)}
             """.trimIndent())
+
+//            val testFrameData: ByteArray = byteArrayOf(
+//                0x7e.toByte(), 0xdb.toByte(), 0x01.toByte(), 0x00.toByte(),
+//                0x00.toByte(), 0x01.toByte(), 0x00.toByte(), 0x01.toByte(),
+//                0x00.toByte(), 0x14.toByte(), 0x01.toByte(), 0x00.toByte(),
+//                0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(),
+//                0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(),
+//                0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(),
+//                0x00.toByte(), 0x00.toByte(), 0x69.toByte(), 0x81.toByte(),
+//                0xa4.toByte(), 0xe4.toByte(), 0xa9.toByte(), 0x7e.toByte()
+//            )
+
+
 
             ble?.writeByUuid(
                 targetDevice,
@@ -623,7 +638,7 @@ class QXBlePlugin : IBridgePlugin {
                             JSONObject().apply {
                                 put("characteristicId", characteristic.uuid.toString())
                                 put("value", characteristic.value?.let {
-                                    HexDataConverter.hexEncodedString(characteristic.value, false)
+                                    ByteUtils.bytes2HexStr(characteristic.value)
                                 } ?: "")
                             },
                             "写入特征值成功"
@@ -640,7 +655,6 @@ class QXBlePlugin : IBridgePlugin {
                     }
                 }
             )
-
         } catch (e: Exception) {
             val errorMsg = "蓝牙数据发送异常：${e.message ?: "未知错误"}"
             Log.e(NAME, errorMsg, e)
@@ -660,19 +674,15 @@ class QXBlePlugin : IBridgePlugin {
             val serviceUUID = jsonParams.getString("serviceId")
             val characteristicUUID = jsonParams.getString("characteristicId")
             val enable = jsonParams.getBoolean("enable")
-            
             // 验证设备连接状态
             val device = ble?.connectedDevices?.find { it.bleAddress == deviceMac } ?: run {
                 sendFailCallback(callback, QXBleErrorCode.DEVICE_NOT_FOUND, "设备未连接")
                 return
             }
-            
             // 启用或关闭通知
             enableCharacteristicNotification(deviceMac, serviceUUID, characteristicUUID, enable, callback)
-            
             // 注册通知回调监听
             ble?.enableNotifyByUuid(device, enable, UUID.fromString(serviceUUID), UUID.fromString(characteristicUUID), bleNotifyCallback(webView))
-            
         } catch (e: Exception) {
             sendFailCallback(callback, QXBleErrorCode.UNKNOWN_ERROR, "解析参数/调用方法异常：${e.message ?: "未知错误"}")
             e.printStackTrace()
@@ -730,10 +740,8 @@ class QXBlePlugin : IBridgePlugin {
                 sendFailCallback(callback, QXBleErrorCode.PROPERTY_NOT_SUPPORT, "启用本地通知失败")
                 return
             }
-            
             // 写入 CC'D 描述符
             writeCCCDDescriptor(gatt, characteristic, enable, deviceMac, serviceUUID, characteristicUUID, callback)
-            
         } catch (e: Exception) {
             sendFailCallback(callback, QXBleErrorCode.UNKNOWN_ERROR, "启用通知异常：${e.message}")
             e.printStackTrace()
@@ -761,12 +769,10 @@ class QXBlePlugin : IBridgePlugin {
     ) {
         // CC'D 标准 UUID
         val ccdUUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
-        
         val descriptor = characteristic.getDescriptor(ccdUUID) ?: run {
             sendFailCallback(callback, QXBleErrorCode.NO_CHARACTERISTIC, "未找到CC'D描述符")
             return
         }
-        
         // 根据特征属性选择启用通知或指示
         val value = if (enable) {
             when {
@@ -798,7 +804,7 @@ class QXBlePlugin : IBridgePlugin {
         }
         
         val writeSuccess = gatt.writeDescriptor(descriptor)
-        
+        // TODO gu
         if (writeSuccess) {
             Log.d(NAME, "CC'D描述符写入请求已发送: enable=$enable, value=${value.contentToString()}")
             // 返回通知设置成功结果
@@ -806,7 +812,7 @@ class QXBlePlugin : IBridgePlugin {
                 callback,
                 JSONObject().apply {
                     put("characteristicId", characteristicUUID)
-                    put("enabled", enable)
+                    put("isNotifying", enable)
                 },
                 if (enable) "通知已启用" else "通知已关闭"
             )
@@ -836,32 +842,34 @@ class QXBlePlugin : IBridgePlugin {
     private fun bleNotifyCallback(webView: IBridgeWebView?): BleNotifyCallback<BleDevice> {
         return object : BleNotifyCallback<BleDevice>(){
             override fun onChanged(device: BleDevice?, characteristic: BluetoothGattCharacteristic?) {
-                Log.w(NAME, "notify-onChanged")
-                Log.w(NAME, HexDataConverter.hexEncodedString(characteristic?.value, false))
+                Log.w(NAME, "notify-onChanged-${ByteUtils.bytes2HexStr(characteristic?.value)}")
                 sendBleEvent(
                     webView,
                     QXBLEventType.ON_BLE_CHARACTERISTIC_VALUE_CHANGE,
                     JSONObject().apply {
                         put("deviceId", device?.bleAddress)
-                        put("value", HexDataConverter.hexEncodedString(characteristic?.value, false))
+                        put("value", ByteUtils.bytes2HexStr(characteristic?.value))
                         put("characteristicId", characteristic?.uuid.toString())
                     }
                 )
             }
 
             override fun onNotifyCanceled(device: BleDevice?) {
-                super.onNotifyCanceled(device)
                 Log.w(NAME, "notify-onNotifyCanceled")
+                super.onNotifyCanceled(device)
+
             }
 
             override fun onNotifyFailed(device: BleDevice?, failedCode: Int) {
-                super.onNotifyFailed(device, failedCode)
                 Log.w(NAME, "notify-onNotifyFailed $failedCode")
+                super.onNotifyFailed(device, failedCode)
+
             }
 
             override fun onNotifySuccess(device: BleDevice?) {
-                super.onNotifySuccess(device)
                 Log.w(NAME, "notify-onNotifySuccess")
+                super.onNotifySuccess(device)
+
             }
         }
     }
