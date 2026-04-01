@@ -15,6 +15,7 @@ import com.jd.jdbridge.base.IBridgePlugin
 import com.jd.jdbridge.base.IBridgeWebView
 import com.jd.plugins.location.QXLocationManager
 import com.jd.plugins.sacn.QRScannerActivity
+import com.jd.plugins.sacn.ScanQrBridge
 import com.jd.plugins.utils.DeviceUtils
 import org.json.JSONObject
 import android.os.Handler
@@ -259,7 +260,7 @@ class QXBasePlugin : IBridgePlugin {
         try {
             val activity = getActivityFromWebView(webView)
             if (activity == null) {
-                callback?.onError("获取Activity失败")
+                callback?.onError(ScanQrBridge.failJson("无法获取页面"))
                 return
             }
 
@@ -281,7 +282,7 @@ class QXBasePlugin : IBridgePlugin {
                         // 权限已授予，启动扫描
                         startScanActivity(activity, callback)
                     } else {
-                        callback?.onError("相机权限被拒绝")
+                        callback?.onError(ScanQrBridge.failJson("没有相机权限"))
                     }
                 }
             } else {
@@ -290,7 +291,7 @@ class QXBasePlugin : IBridgePlugin {
             }
         } catch (e: Exception) {
             Log.e(TAG, "处理扫描请求失败", e)
-            callback?.onError("处理扫描请求失败")
+            callback?.onError(ScanQrBridge.failJson("未知错误"))
         }
     }
 
@@ -301,12 +302,16 @@ class QXBasePlugin : IBridgePlugin {
         try {
             val intent = Intent(activity, QRScannerActivity::class.java)
             val callbackId = "scanQRCode"
+            intent.putExtra(
+                "params",
+                JSONObject().put("callbackId", callbackId).toString(),
+            )
             intent.putExtra("callbackId", callbackId)
             ClosureRegistry.register(callbackId, callback)
             activity.startActivityForResult(intent, 1002)
         } catch (e: Exception) {
             Log.e(TAG, "启动扫描活动失败", e)
-            callback?.onError("启动扫描活动失败")
+            callback?.onError(ScanQrBridge.failJson("未知错误"))
         }
     }
 

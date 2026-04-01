@@ -23,6 +23,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.jd.plugins.ClosureRegistry
 import com.jd.plugins.QXBridgePluginRegister
+import com.jd.plugins.QXHostBridgePlugin
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -88,6 +89,9 @@ open class QXWebViewActivity : AppCompatActivity() {
     private var isNavBarVisible = false
     private var navigationBarStyleOverride: NavigationBarStyle? = null
 
+    /** 本页注册的 Host 桥插件，销毁时从全局表移除，避免多页面 delegate 与泄漏问题 */
+    private var registeredHostBridgePlugin: QXHostBridgePlugin? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         root = FrameLayout(this)
@@ -96,9 +100,14 @@ open class QXWebViewActivity : AppCompatActivity() {
         setupBackPressedHandler()
         // 从 Intent 读取配置
         applyIntentConfig()
-        QXBridgePluginRegister.registerAllPlugins(webView)
+        registeredHostBridgePlugin = QXBridgePluginRegister.registerAllPlugins(webView)
     }
 
+    override fun onDestroy() {
+        QXBridgePluginRegister.unregisterHostBridgePlugin(registeredHostBridgePlugin)
+        registeredHostBridgePlugin = null
+        super.onDestroy()
+    }
 
     private fun applyIntentConfig() {
         val immersiveMode = intent.getBooleanExtra(EXTRA_IMMERSIVE, true)

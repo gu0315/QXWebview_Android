@@ -1,106 +1,77 @@
 package com.jd.plugins
 
 import QXBlePlugin
-import android.content.Context
 import android.util.Log
 import com.jd.hybrid.JDWebView
-import com.jd.jdbridge.JDBridge
 import com.jd.jdbridge.base.IBridgePlugin
-import com.jd.jdbridge.base.registerDefaultPlugin
 import com.jd.jdbridge.base.registerPlugin
 
-/**
- * QXBridge插件注册类
- * 用于在JDBridge中注册QXBasePlugin
- */
+/** 向 [JDWebView] 注册 QX Bridge 插件，并管理 Host 与 [QXWebViewHostDelegate]。 */
 object QXBridgePluginRegister {
 
     private val TAG = "RegisterPlugin"
-    
-    /**
-     * QXHostBridgePlugin 实例引用
-     * 用于在外部设置 hostDelegate
-     */
-    private var hostBridgePluginInstance: QXHostBridgePlugin? = null
-    
-    /**
-     * 当前 host delegate。
-     * 需要在每次创建新的 QXHostBridgePlugin 时都重新绑定，避免仅首次生效。
-     */
+    private val hostBridgePluginsLock = Any()
+    private val hostBridgePlugins = mutableSetOf<QXHostBridgePlugin>()
+
+    @Volatile
     private var currentHostDelegate: QXWebViewHostDelegate? = null
 
-    /**
-     * 注册所有的Plugin到WebView
-     * @param webView 需要注册插件的WebView实例
-     */
-    public fun registerAllPlugins(webView: JDWebView?) {
-        // 注册QXBasePlugin
+    /** 注册 Base / BLE / Host；返回 [QXHostBridgePlugin] 供 [unregisterHostBridgePlugin]。 */
+    public fun registerAllPlugins(webView: JDWebView?): QXHostBridgePlugin? {
         val basePlugin = QXBasePlugin()
         val blePlugin = QXBlePlugin()
         val hostBridgePlugin = QXHostBridgePlugin()
-        
-        // 保存 QXHostBridgePlugin 实例引用
-        hostBridgePluginInstance = hostBridgePlugin
-        
-        // 每次注册新的 hostBridgePlugin 都绑定当前 delegate
-        currentHostDelegate?.let {
-            hostBridgePlugin.setHostDelegate(it)
+        synchronized(hostBridgePluginsLock) {
+            hostBridgePlugins.add(hostBridgePlugin)
         }
-        
+        currentHostDelegate?.let { hostBridgePlugin.setHostDelegate(it) }
         webView?.let { registerPlugin(it, basePlugin.NAME, basePlugin) }
         webView?.let { registerPlugin(it, blePlugin.NAME, blePlugin) }
         webView?.let { registerPlugin(it, "QXHostBridgePlugin", hostBridgePlugin) }
-        // 注册其他插件（如有）可以在此处添加
-        // 例如：registerPlugin(webView, "other", OtherPlugin())
+        return hostBridgePlugin
     }
-    
-    /**
-     * 获取 QXHostBridgePlugin 实例
-     * @return QXHostBridgePlugin 实例，如果未注册则返回 null
-     */
+
+    /** 从全局表移除并清空 delegate；建议在承载 WebView 的页面 [onDestroy] 调用。 */
+    public fun unregisterHostBridgePlugin(plugin: QXHostBridgePlugin?) {
+        plugin ?: return
+        synchronized(hostBridgePluginsLock) {
+            hostBridgePlugins.remove(plugin)
+        }
+        plugin.setHostDelegate(null)
+    }
+
+    /** 最近一次 [registerAllPlugins] 对应的 Host 插件。 */
     public fun getHostBridgePlugin(): QXHostBridgePlugin? {
-        return hostBridgePluginInstance
-    }
-    
-    /**
-     * 设置 Host Delegate
-     * 如果 plugin 已注册，立即设置；否则保存待注册时设置
-     * @param delegate QXWebViewHostDelegate 实例
-     */
-    public fun setHostDelegate(delegate: QXWebViewHostDelegate?) {
-        currentHostDelegate = delegate
-        if (hostBridgePluginInstance != null) {
-            // plugin 已注册，立即设置
-            hostBridgePluginInstance?.setHostDelegate(delegate)
+        synchronized(hostBridgePluginsLock) {
+            return hostBridgePlugins.lastOrNull()
         }
     }
-    
-    /**
-     * 清理插件实例引用
-     * 建议在 WebView 销毁时调用
-     */
+
+    /** 设置宿主 delegate，并同步到当前已注册的全部 Host 插件。 */
+    public fun setHostDelegate(delegate: QXWebViewHostDelegate?) {
+        currentHostDelegate = delegate
+        val snapshot = synchronized(hostBridgePluginsLock) {
+            hostBridgePlugins.toList()
+        }
+        snapshot.forEach { it.setHostDelegate(delegate) }
+    }
+
+    /** 清空全部 Host 与 delegate；单页释放优先 [unregisterHostBridgePlugin]。 */
     public fun clearPlugins() {
-        hostBridgePluginInstance?.setHostDelegate(null)
-        hostBridgePluginInstance = null
+        val snapshot = synchronized(hostBridgePluginsLock) {
+            val copy = hostBridgePlugins.toList()
+            hostBridgePlugins.clear()
+            copy
+        }
+        snapshot.forEach { it.setHostDelegate(null) }
         currentHostDelegate = null
     }
 
-    /**
-     * 注册单个Plugin
-     * @param webView WebView实例
-     * @param name 插件名称
-     * @param plugin 插件实例
-     */
     public fun registerPlugin(webView: JDWebView, name: String, plugin: IBridgePlugin) {
         showLog("register $name")
-        // 根据用户提供的示例，使用registerDefaultPlugin方法注册插件
         webView.registerPlugin(name, plugin)
     }
 
-    /**
-     * 显示日志
-     * @param message 日志消息
-     */
     public fun showLog(message: String) {
         Log.d(TAG, message)
     }
