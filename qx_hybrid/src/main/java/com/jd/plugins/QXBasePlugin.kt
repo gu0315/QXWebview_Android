@@ -27,6 +27,7 @@ import java.net.HttpURLConnection
 import androidx.core.content.FileProvider
 import android.os.StrictMode
 import android.webkit.MimeTypeMap
+import com.jd.hybrid.QXWebViewActivity
 import com.jd.plugins.utils.OpenMapAppUtils
 
 /**
@@ -106,6 +107,11 @@ class QXBasePlugin : IBridgePlugin {
 
             "openMap" -> {
                 handleOpenMap(webView, params, callback)
+                return true
+            }
+
+            "setNavigationBarStyle" -> {
+                handleSetNavigationBarStyle(webView, params, callback)
                 return true
             }
             else -> {
@@ -491,6 +497,66 @@ class QXBasePlugin : IBridgePlugin {
             lng.toDoubleOrNull() ?: 0.0,
             name
         )
+    }
+
+    private fun handleSetNavigationBarStyle(
+        webView: IBridgeWebView?,
+        params: String?,
+        callback: IBridgeCallback?
+    ) {
+        val activity = getActivityFromWebView(webView)
+        if (activity !is QXWebViewActivity) {
+            callback?.onError("当前页面不支持设置导航栏样式")
+            return
+        }
+
+        val jsonObj = try {
+            JSONObject(params ?: "{}")
+        } catch (e: Exception) {
+            callback?.onError("参数解析失败")
+            return
+        }
+
+        val styleValue = when {
+            jsonObj.has("style") -> jsonObj.opt("style")
+            jsonObj.has("barStyle") -> jsonObj.opt("barStyle")
+            else -> null
+        }
+        val style = parseNavigationBarStyle(styleValue)
+        if (style == null) {
+            callback?.onError("style 参数仅支持 default/black 或 0/1")
+            return
+        }
+
+        val applyStyle: () -> Unit = {
+            activity.setNavigationBarStyle(style)
+            callback?.onSuccess(JSONObject().apply {
+                put("code", 0)
+                put("msg", "navigationBar.barStyle 设置成功")
+                put("style", style.jsValue)
+                put("rawValue", style.rawValue)
+            })
+            Unit
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            applyStyle()
+        } else {
+            Handler(Looper.getMainLooper()).post(applyStyle)
+        }
+    }
+
+    private fun parseNavigationBarStyle(styleValue: Any?): QXWebViewActivity.NavigationBarStyle? {
+        if (styleValue == null || styleValue == JSONObject.NULL) {
+            return null
+        }
+        return when (styleValue) {
+            is Number -> QXWebViewActivity.NavigationBarStyle.fromRawValue(styleValue.toInt())
+            is String -> {
+                styleValue.toIntOrNull()?.let { QXWebViewActivity.NavigationBarStyle.fromRawValue(it) }
+                    ?: QXWebViewActivity.NavigationBarStyle.fromJsValue(styleValue)
+            }
+            else -> null
+        }
     }
 
     /**

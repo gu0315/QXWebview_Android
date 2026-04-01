@@ -54,7 +54,7 @@ public class FirstFragment extends Fragment {
             setupHostDelegate();
             // 启动 WebView Activity
             Intent intent = new Intent(requireContext(), QXWebViewActivity.class);
-            intent.putExtra(QXWebViewActivity.EXTRA_URL, "http://172.20.10.2:5173/");
+            intent.putExtra(QXWebViewActivity.EXTRA_URL, "http://192.168.31.137:5173/");
             startActivity(intent);
         });
         

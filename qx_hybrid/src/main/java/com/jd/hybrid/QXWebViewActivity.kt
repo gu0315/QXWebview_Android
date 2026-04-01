@@ -29,6 +29,43 @@ import org.json.JSONObject
 
 open class QXWebViewActivity : AppCompatActivity() {
 
+    enum class NavigationBarStyle(
+        val rawValue: Int,
+        val jsValue: String,
+        val backgroundColor: Int,
+        val foregroundColor: Int,
+        val lightStatusBar: Boolean
+    ) {
+        DEFAULT(
+            rawValue = 0,
+            jsValue = "default",
+            backgroundColor = Color.WHITE,
+            foregroundColor = Color.BLACK,
+            lightStatusBar = true
+        ),
+        BLACK(
+            rawValue = 1,
+            jsValue = "black",
+            backgroundColor = Color.BLACK,
+            foregroundColor = Color.WHITE,
+            lightStatusBar = false
+        );
+
+        companion object {
+            fun fromRawValue(rawValue: Int): NavigationBarStyle? = when (rawValue) {
+                0 -> DEFAULT
+                1 -> BLACK
+                else -> null
+            }
+
+            fun fromJsValue(value: String): NavigationBarStyle? = when (value.trim().lowercase()) {
+                DEFAULT.jsValue -> DEFAULT
+                BLACK.jsValue -> BLACK
+                else -> null
+            }
+        }
+    }
+
     companion object {
         private const val TAG = "QXWebViewActivity"
         private const val NAV_BAR_HEIGHT_DP = 48
@@ -49,6 +86,7 @@ open class QXWebViewActivity : AppCompatActivity() {
 
     private var isImmersive = false
     private var isNavBarVisible = false
+    private var navigationBarStyleOverride: NavigationBarStyle? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -199,6 +237,7 @@ open class QXWebViewActivity : AppCompatActivity() {
             FrameLayout.LayoutParams.MATCH_PARENT,
             dp2px(NAV_BAR_HEIGHT_DP.toFloat())
         ))
+        applyNavigationBarStyle(resolveNavigationBarStyle())
     }
 
     private fun updateLayout() {
@@ -228,6 +267,12 @@ open class QXWebViewActivity : AppCompatActivity() {
         navBar.setBackgroundColor(color)
     }
 
+    fun setNavigationBarStyle(style: NavigationBarStyle) {
+        navigationBarStyleOverride = style
+        applyNavigationBarStyle(style)
+        applyStatusBarAppearance(style)
+    }
+
     // region 状态栏
 
     /**
@@ -238,22 +283,41 @@ open class QXWebViewActivity : AppCompatActivity() {
     protected fun setImmersiveStatusBar(enable: Boolean, lightStatusBar: Boolean) {
         isImmersive = enable
         WindowCompat.setDecorFitsSystemWindows(window, !enable)
+        val resolvedStyle = resolveNavigationBarStyle()
 
         if (enable) {
             window.statusBarColor = Color.TRANSPARENT
-            WindowInsetsControllerCompat(window, window.decorView).apply {
-                isAppearanceLightStatusBars = lightStatusBar
-            }
         } else {
-            window.statusBarColor = Color.WHITE
-            WindowInsetsControllerCompat(window, window.decorView).apply {
-                isAppearanceLightStatusBars = true
-            }
+            window.statusBarColor = resolvedStyle.backgroundColor
         }
+        applyStatusBarAppearance(resolvedStyle, fallbackLightStatusBar = lightStatusBar)
         updateLayout()
     }
 
     // region 工具方法
+    private fun resolveNavigationBarStyle(): NavigationBarStyle =
+        navigationBarStyleOverride ?: NavigationBarStyle.DEFAULT
+
+    private fun applyNavigationBarStyle(style: NavigationBarStyle) {
+        navBar.setBackgroundColor(style.backgroundColor)
+        titleView.setTextColor(style.foregroundColor)
+        backBtn.setTextColor(style.foregroundColor)
+    }
+
+    private fun applyStatusBarAppearance(
+        style: NavigationBarStyle,
+        fallbackLightStatusBar: Boolean = style.lightStatusBar
+    ) {
+        val lightStatusBar = if (navigationBarStyleOverride != null) {
+            style.lightStatusBar
+        } else {
+            fallbackLightStatusBar
+        }
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            isAppearanceLightStatusBars = lightStatusBar
+        }
+    }
+
     private fun setupUA() {
         webView.settings.userAgentString = buildString {
             append(webView.settings.userAgentString)
