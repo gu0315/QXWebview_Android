@@ -14,8 +14,6 @@ import androidx.navigation.fragment.NavHostFragment;
 
 import com.energy.chery_android.databinding.FragmentFirstBinding;
 import com.jd.hybrid.QXWebViewActivity;
-import com.jd.plugins.QXBridgePluginRegister;
-import com.jd.plugins.QXWebViewHostDelegate;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -50,49 +48,14 @@ public class FirstFragment extends Fragment {
         );
 
         binding.buttonWebview.setOnClickListener(v -> {
-            // 设置 Host Delegate
-            setupHostDelegate();
             // 启动 WebView Activity
             Intent intent = new Intent(requireContext(), QXWebViewActivity.class);
-            intent.putExtra(QXWebViewActivity.EXTRA_URL, "http://192.168.31.137:5173/");
+            intent.putExtra(QXWebViewActivity.EXTRA_URL, "http://172.20.10.2:5173/");
             startActivity(intent);
         });
         
         // 测试支付按钮
         binding.buttonPayment.setOnClickListener(v -> testPayment());
-    }
-    
-    private void setupHostDelegate() {
-        QXBridgePluginRegister.INSTANCE.setHostDelegate(new QXWebViewHostDelegate() {
-            @Override
-            public void webViewRequestOpenPage(@NotNull String url, @Nullable Map<?, ?> params, @NotNull Function1<@Nullable Object, @NotNull Unit> completion) {
-                Log.d("FirstFragment", "webViewRequestOpenPage: " + url);
-                
-                // 检查是否是支付相关的 URL
-                if (url.contains("payment") || url.contains("pay")) {
-                    // 跳转到原生支付页面
-                    startPaymentFromWebView(params, completion);
-                } else {
-                    // 其他 URL 直接返回成功
-                    JSONObject res = new JSONObject();
-                    try {
-                        res.put("success", true);
-                        res.put("message", "页面打开成功");
-                    } catch (JSONException ignored) {
-                    }
-                    completion.invoke(res);
-                }
-            }
-            
-            @Override
-            public void webViewRequestCustomMethod(@NotNull String methodName,
-                                                   @Nullable Map<String, ?> params,
-                                                   @NotNull Function1<Object, Unit> completion) {
-                Log.d("FirstFragment", "webViewRequestCustomMethod: " + methodName);
-                // 处理自定义方法调用
-                completion.invoke(null);
-            }
-        });
     }
     
     /**

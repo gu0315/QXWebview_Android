@@ -24,9 +24,10 @@ object QXBridgePluginRegister {
     private var hostBridgePluginInstance: QXHostBridgePlugin? = null
     
     /**
-     * 待设置的 delegate，用于在 plugin 注册前就设置 delegate
+     * 当前 host delegate。
+     * 需要在每次创建新的 QXHostBridgePlugin 时都重新绑定，避免仅首次生效。
      */
-    private var pendingHostDelegate: QXWebViewHostDelegate? = null
+    private var currentHostDelegate: QXWebViewHostDelegate? = null
 
     /**
      * 注册所有的Plugin到WebView
@@ -41,10 +42,9 @@ object QXBridgePluginRegister {
         // 保存 QXHostBridgePlugin 实例引用
         hostBridgePluginInstance = hostBridgePlugin
         
-        // 如果有待设置的 delegate，立即设置
-        pendingHostDelegate?.let {
+        // 每次注册新的 hostBridgePlugin 都绑定当前 delegate
+        currentHostDelegate?.let {
             hostBridgePlugin.setHostDelegate(it)
-            pendingHostDelegate = null
         }
         
         webView?.let { registerPlugin(it, basePlugin.NAME, basePlugin) }
@@ -68,12 +68,10 @@ object QXBridgePluginRegister {
      * @param delegate QXWebViewHostDelegate 实例
      */
     public fun setHostDelegate(delegate: QXWebViewHostDelegate?) {
+        currentHostDelegate = delegate
         if (hostBridgePluginInstance != null) {
             // plugin 已注册，立即设置
             hostBridgePluginInstance?.setHostDelegate(delegate)
-        } else {
-            // plugin 未注册，保存待注册时设置
-            pendingHostDelegate = delegate
         }
     }
     
@@ -84,7 +82,7 @@ object QXBridgePluginRegister {
     public fun clearPlugins() {
         hostBridgePluginInstance?.setHostDelegate(null)
         hostBridgePluginInstance = null
-        pendingHostDelegate = null
+        currentHostDelegate = null
     }
 
     /**
