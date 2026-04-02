@@ -7,7 +7,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        BridgeHostManager.init();
+//        BridgeHostManager.init();
         setContentView(R.layout.activity_main);
     }
 }

@@ -18,13 +18,9 @@
   <component name="ChangeListManager">
     <list default="true" id="ce963f5f-ade7-4206-9878-2cf5bade582a" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/qx_hybrid/build.gradle" beforeDir="false" afterPath="$PROJECT_DIR$/qx_hybrid/build.gradle" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/qx_hybrid/src/main/AndroidManifest.xml" beforeDir="false" afterPath="$PROJECT_DIR$/qx_hybrid/src/main/AndroidManifest.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/hybrid/QXWebViewActivity.kt" beforeDir="false" afterPath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/hybrid/QXWebViewActivity.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/QXBasePlugin.kt" beforeDir="false" afterPath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/QXBasePlugin.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/QXBridgePluginRegister.kt" beforeDir="false" afterPath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/QXBridgePluginRegister.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/QXHostBridgePlugin.kt" beforeDir="false" afterPath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/QXHostBridgePlugin.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/sacn/QRScannerActivity.kt" beforeDir="false" afterPath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/sacn/QRScannerActivity.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/energy/chery_android/BridgeHostManager.java" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/energy/chery_android/BridgeHostManager.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/energy/chery_android/FirstFragment.java" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/energy/chery_android/FirstFragment.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/energy/chery_android/MainActivity.java" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/energy/chery_android/MainActivity.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -164,7 +160,7 @@
       <breakpoints>
         <line-breakpoint enabled="true" type="java-line">
           <url>file://$PROJECT_DIR$/app/src/main/java/com/energy/chery_android/FirstFragment.java</url>
-          <line>180</line>
+          <line>181</line>
           <option name="timeStamp" value="1" />
         </line-breakpoint>
       </breakpoints>

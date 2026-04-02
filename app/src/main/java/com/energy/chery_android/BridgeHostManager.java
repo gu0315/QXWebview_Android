@@ -53,10 +53,18 @@ public final class BridgeHostManager {
                         completion.invoke(result);
                         break;
                     case "app://login":
-                        result.put("success", true);
-                        result.put("action", "login");
-                        result.put("params", safeParams);
-                        completion.invoke(result);
+                        List<Map<String, String>> deviceList = new ArrayList<>();
+                        deviceList.add(createDevice("vin1", "mac1"));
+                        deviceList.add(createDevice("vin2", "mac2"));
+                        deviceList.add(createDevice("vin3", "mac3"));
+
+                        Map<String, Object> userInfo = new HashMap<>();
+                        userInfo.put("phone", "xxx");
+                        userInfo.put("list", deviceList);
+                        userInfo.put("userId", "xxx");
+                        userInfo.put("isLogin", true);
+                        userInfo.put("userName", "xxx");
+                        completion.invoke(userInfo);
                         break;
                     default:
                         Log.d(TAG, "未处理的 URL: " + url);
