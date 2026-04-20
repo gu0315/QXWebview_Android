@@ -67,6 +67,7 @@ class QXLocationManager private constructor(context: Context) {
 
     private var isCallbackInvoked = false
     private var bestLocation: Location? = null
+    private var hasFreshLocation = false
 
     private var timeoutRunnable: Runnable? = null
 
@@ -210,8 +211,8 @@ class QXLocationManager private constructor(context: Context) {
     }
 
     /**
-     * 尝试用 lastKnownLocation 先快速给一份临时结果（isTemp=true），
-     * 不会终止后续实时定位，确保最终仍会回调一份更精准的坐标。
+     * 预热 lastKnownLocation 作为候选点，加快超时兜底时的可用性；
+     * 但不直接回调，避免前端总是先收到 locationType=cache。
      */
     private fun tryReturnLastKnown() {
         val gps = locationManager?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
@@ -227,7 +228,9 @@ class QXLocationManager private constructor(context: Context) {
             .maxByOrNull { providerWeight(it) }
 
         best?.let {
-            processLocation(it, isTemp = true)
+            if (isBetterLocation(it, bestLocation)) {
+                bestLocation = it
+            }
         }
     }
 
@@ -259,6 +262,7 @@ class QXLocationManager private constructor(context: Context) {
             override fun onLocationChanged(location: Location) {
                 if (!isValidLocation(location)) return
 
+                hasFreshLocation = true
                 if (isBetterLocation(location, bestLocation)) {
                     bestLocation = location
                 }
@@ -308,11 +312,10 @@ class QXLocationManager private constructor(context: Context) {
 
     /**
      * 核心：组装与 iOS 对齐的结果 JSON。
-     * 坐标统一由 WGS84 转换为 GCJ02（解决国内 GPS 偏移）；
-     * isTemp=true 表示这份结果来自 lastKnownLocation，不会终止实时监听，也不会写缓存。
+     * 坐标统一由 WGS84 转换为 GCJ02（解决国内 GPS 偏移）。
      */
-    private fun processLocation(location: Location, isTemp: Boolean = false) {
-        if (isCallbackInvoked && !isTemp) return
+    private fun processLocation(location: Location) {
+        if (isCallbackInvoked) return
 
         val (lat, lng) = try {
             GCJ02Converter.wgs84ToGcj02(location.latitude, location.longitude)
@@ -334,7 +337,7 @@ class QXLocationManager private constructor(context: Context) {
             put("gcoord", "GCJ02")
             put("hasPermission", true)
             put("isEnable", true)
-            put("locationType", if (isTemp) "cache" else "new")
+            put("locationType", "new")
             // 行政区字段先占位，逆地理回填后再回调，保证字段结构始终一致。
             put("state", "")
             put("city", "")
@@ -343,17 +346,13 @@ class QXLocationManager private constructor(context: Context) {
             put("streetNum", "")
         }
 
-        if (!isTemp) {
-            isCallbackInvoked = true
-            release()
-        }
+        isCallbackInvoked = true
+        release()
 
         // 返回给前端继续使用 GCJ02，但 Geocoder 查询使用系统原始坐标，避免地址解析为空。
         reverseGeocodeAsync(location.latitude, location.longitude) { address ->
             fillAddress(result, address)
-            if (!isTemp) {
-                saveCache(result)
-            }
+            saveCache(result)
             callbackSuccess(result)
         }
     }
@@ -481,9 +480,11 @@ class QXLocationManager private constructor(context: Context) {
 
     private fun startTimeout() {
         timeoutRunnable = Runnable {
-            bestLocation?.let {
+            if (hasFreshLocation) bestLocation?.let {
                 processLocation(it)
-            } ?: readCache()
+            } else {
+                readCache()
+            }
         }
         mainHandler.postDelayed(timeoutRunnable!!, timeout)
     }
@@ -552,6 +553,7 @@ class QXLocationManager private constructor(context: Context) {
         release()
         isCallbackInvoked = false
         bestLocation = null
+        hasFreshLocation = false
         targetAccuracy = LocationConstants.DEFAULT_ACCURACY
         timeout = LocationConstants.DEFAULT_TIMEOUT.toLong()
     }
