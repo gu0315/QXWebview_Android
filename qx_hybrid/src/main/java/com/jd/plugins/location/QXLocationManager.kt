@@ -21,6 +21,10 @@ import android.provider.Settings
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.amap.api.location.AMapLocation
+import com.amap.api.location.AMapLocationClient
+import com.amap.api.location.AMapLocationClientOption
+import com.amap.api.location.AMapLocationListener
 import com.google.gson.Gson
 import com.jd.jdbridge.base.IBridgeCallback
 import com.jd.plugins.utils.GCJ02Converter
@@ -62,11 +66,14 @@ class QXLocationManager private constructor(context: Context) {
         context?.let { Geocoder(it, Locale.CHINA) }
     }
 
+    private var amapLocationClient: AMapLocationClient? = null
     private var locationCallback: IBridgeCallback? = null
     private var permissionCallback: ((Boolean) -> Unit)? = null
 
     private var isCallbackInvoked = false
+    private var bestAmapLocation: AMapLocation? = null
     private var bestLocation: Location? = null
+    private var hasStartedSystemFallback = false
 
     private var timeoutRunnable: Runnable? = null
 
@@ -196,12 +203,17 @@ class QXLocationManager private constructor(context: Context) {
             return
         }
 
-        tryReturnLastKnown()
-
-        refreshAGPS()
-
         startTimeout()
+        if (shouldUseAmapLocation()) {
+            startAmapLocation()
+        } else {
+            startSystemLocation()
+        }
+    }
 
+    private fun startSystemLocation() {
+        tryReturnLastKnown()
+        refreshAGPS()
         startParallelRequest()
     }
 
@@ -271,6 +283,63 @@ class QXLocationManager private constructor(context: Context) {
         }
     }
 
+    private fun startAmapLocation() {
+        val ctx = context ?: run {
+            startSystemFallback()
+            return
+        }
+        try {
+            AMapLocationClient.updatePrivacyShow(ctx, true, true)
+            AMapLocationClient.updatePrivacyAgree(ctx, true)
+
+            destroyAmapLocationClient()
+            val option = AMapLocationClientOption().apply {
+                locationMode = AMapLocationClientOption.AMapLocationMode.Hight_Accuracy
+                isNeedAddress = true
+                isMockEnable = false
+                isOnceLocation = false
+                interval = 1000L
+                httpTimeOut = timeout
+            }
+
+            amapLocationClient = AMapLocationClient(ctx).apply {
+                setLocationOption(option)
+                setLocationListener(amapLocationListener)
+                startLocation()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "startAmapLocation failed: $e")
+            startSystemFallback()
+        }
+    }
+
+    private val amapLocationListener = AMapLocationListener { amapLocation ->
+        if (!isValidAmapLocation(amapLocation)) {
+            if (amapLocation != null) {
+                Log.w(
+                    TAG,
+                    "amap location invalid, code=${amapLocation.errorCode}, info=${amapLocation.errorInfo}"
+                )
+            }
+            startSystemFallback()
+            return@AMapLocationListener
+        }
+
+        if (isBetterAmapLocation(amapLocation!!, bestAmapLocation)) {
+            bestAmapLocation = amapLocation
+        }
+
+        if (amapLocation.accuracy <= targetAccuracy) {
+            processAmapLocation(amapLocation)
+        }
+    }
+
+    private fun startSystemFallback() {
+        if (hasStartedSystemFallback || isCallbackInvoked) return
+        hasStartedSystemFallback = true
+        startSystemLocation()
+    }
+
     // ===================== 选点 & 坐标系 =====================
     /**
      * 最优坐标判定优先级：GPS > 网络；同源比精度；跨源允许 50m 以内的精度差；最后比时间。
@@ -300,6 +369,13 @@ class QXLocationManager private constructor(context: Context) {
             LocationManager.NETWORK_PROVIDER -> 2
             else -> 1
         }
+    }
+
+    private fun isBetterAmapLocation(newLoc: AMapLocation, oldLoc: AMapLocation?): Boolean {
+        if (oldLoc == null) return true
+        if (newLoc.accuracy < oldLoc.accuracy) return true
+        if (newLoc.accuracy > oldLoc.accuracy + 20f) return false
+        return newLoc.time > oldLoc.time
     }
 
     /**
@@ -350,6 +426,43 @@ class QXLocationManager private constructor(context: Context) {
             if (!isTemp) saveCache(result)
             callbackSuccess(result)
         }
+    }
+
+    private fun processAmapLocation(location: AMapLocation, isTemp: Boolean = false) {
+        if (isCallbackInvoked && !isTemp) return
+
+        val speed = if (location.hasSpeed()) location.speed.toDouble() else -1.0
+        val altitude = if (location.hasAltitude()) location.altitude else 0.0
+        val timestamp = if (location.time > 0) location.time else System.currentTimeMillis()
+
+        val result = JSONObject().apply {
+            put("latitude", location.latitude)
+            put("longitude", location.longitude)
+            put("accuracy", location.accuracy.toDouble())
+            put("altitude", altitude)
+            put("speed", speed)
+            put("timestamp", timestamp.toString())
+            put("geopoint", String.format(Locale.US, "%.6f,%.6f", location.latitude, location.longitude))
+            put("gcoord", "GCJ02")
+            put("hasPermission", true)
+            put("isEnable", true)
+            put("locationType", if (isTemp) "cache" else "new")
+            put("state", "")
+            put("city", "")
+            put("district", "")
+            put("street", "")
+            put("streetNum", "")
+        }
+
+        fillAmapAddress(result, location)
+
+        if (!isTemp) {
+            isCallbackInvoked = true
+            release()
+            saveCache(result)
+        }
+
+        callbackSuccess(result)
     }
 
     /**
@@ -411,6 +524,30 @@ class QXLocationManager private constructor(context: Context) {
         } catch (_: Exception) {}
     }
 
+    private fun fillAmapAddress(result: JSONObject, location: AMapLocation) {
+        try {
+            result.put("state", location.province.orEmpty())
+            result.put("city", location.city.orEmpty())
+            result.put("district", location.district.orEmpty())
+            val streetNum = location.streetNum.orEmpty()
+            val streetName = location.street.orEmpty()
+            val road = location.road.orEmpty()
+            val poiName = location.poiName.orEmpty()
+            val aoiName = location.aoiName.orEmpty()
+            val formattedAddress = location.address.orEmpty()
+            val street = when {
+                streetName.isNotEmpty() && streetNum.isNotEmpty() -> streetName + streetNum
+                streetName.isNotEmpty() -> streetName
+                road.isNotEmpty() -> road
+                poiName.isNotEmpty() -> poiName
+                aoiName.isNotEmpty() -> aoiName
+                else -> formattedAddress
+            }
+            result.put("street", street)
+            result.put("streetNum", streetNum)
+        } catch (_: Exception) {}
+    }
+
     private fun buildEmptyResult(
         locationType: String,
         hasPermission: Boolean,
@@ -452,6 +589,43 @@ class QXLocationManager private constructor(context: Context) {
                 System.currentTimeMillis() - loc.time < TimeUnit.MINUTES.toMillis(5)
     }
 
+    private fun isValidAmapLocation(loc: AMapLocation?): Boolean {
+        return loc != null &&
+                loc.errorCode == 0 &&
+                loc.latitude != 0.0 &&
+                loc.longitude != 0.0 &&
+                loc.accuracy > 0f &&
+                loc.accuracy <= 300f
+    }
+
+    private fun shouldUseAmapLocation(): Boolean {
+        val apiKey = getAmapApiKey()
+        if (apiKey.isBlank()) {
+            Log.w(TAG, "AMap api key missing, fallback to system location")
+            return false
+        }
+        return true
+    }
+
+    private fun getAmapApiKey(): String {
+        val ctx = context ?: return ""
+        return try {
+            val appInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ctx.packageManager.getApplicationInfo(
+                    ctx.packageName,
+                    PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong())
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                ctx.packageManager.getApplicationInfo(ctx.packageName, PackageManager.GET_META_DATA)
+            }
+            appInfo.metaData?.getString("com.amap.api.v2.apikey").orEmpty()
+        } catch (e: Exception) {
+            Log.w(TAG, "read AMap api key failed: $e")
+            ""
+        }
+    }
+
     private fun isLocationEnabled(): Boolean {
         val lm = locationManager ?: return false
         return lm.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
@@ -475,7 +649,9 @@ class QXLocationManager private constructor(context: Context) {
 
     private fun startTimeout() {
         timeoutRunnable = Runnable {
-            bestLocation?.let {
+            bestAmapLocation?.let {
+                processAmapLocation(it)
+            } ?: bestLocation?.let {
                 processLocation(it)
             } ?: readCache()
         }
@@ -544,17 +720,29 @@ class QXLocationManager private constructor(context: Context) {
 
     private fun clear() {
         isCallbackInvoked = false
+        bestAmapLocation = null
         bestLocation = null
+        hasStartedSystemFallback = false
+        destroyAmapLocationClient()
         locationListeners.clear()
     }
 
     fun release() {
+        destroyAmapLocationClient()
         locationListeners.forEach {
             locationManager?.removeUpdates(it)
         }
         locationListeners.clear()
         timeoutRunnable?.let { mainHandler.removeCallbacks(it) }
         timeoutRunnable = null
+    }
+
+    private fun destroyAmapLocationClient() {
+        try {
+            amapLocationClient?.stopLocation()
+            amapLocationClient?.onDestroy()
+        } catch (_: Exception) {}
+        amapLocationClient = null
     }
 }
 

@@ -21,6 +21,9 @@
     <!-- 定位权限 -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- 高德定位依赖网络请求 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- 声明蓝牙功能 -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
@@ -58,6 +61,10 @@
     </queries>
 
     <application>
+        <meta-data
+            android:name="com.amap.api.v2.apikey"
+            android:value="${AMAP_API_KEY}" />
+
         <!-- QXWebViewActivity -->
         <activity
             android:name="com.jd.hybrid.QXWebViewActivity"
