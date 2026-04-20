@@ -215,10 +215,10 @@ class QXLocationManager private constructor(context: Context) {
 
         val best = listOfNotNull(gps, net)
             .filter { isValidLocation(it) }
-            // 仅采用 30s 内且精度 ≤ 50m 的历史点，避免把陈旧/低精度坐标当作结果返回。
+            // 历史点也要满足当前目标精度，避免临时结果先把 street 落到附近道路上。
             .filter {
                 System.currentTimeMillis() - it.time < TimeUnit.SECONDS.toMillis(30) &&
-                        it.accuracy <= 50
+                        it.accuracy <= targetAccuracy
             }
             .maxByOrNull { providerWeight(it) }
 
@@ -259,9 +259,8 @@ class QXLocationManager private constructor(context: Context) {
                     bestLocation = location
                 }
 
-                // GPS 定位只要有效就直接返回；网络定位需达到目标精度才返回。
-                val isGps = location.provider == LocationManager.GPS_PROVIDER
-                if (isGps || location.accuracy <= targetAccuracy) {
+                // 统一按目标精度回调，避免 GPS 初始漂移点过早返回，导致 street 落到邻近道路。
+                if (location.accuracy <= targetAccuracy) {
                     processLocation(location)
                 }
             }
@@ -345,7 +344,8 @@ class QXLocationManager private constructor(context: Context) {
             release()
         }
 
-        reverseGeocodeAsync(location.latitude, location.longitude) { address ->
+        // 返回给前端的是 GCJ02，这里也使用同一坐标系做逆地理，避免国内场景街道偏移。
+        reverseGeocodeAsync(lat, lng) { address ->
             fillAddress(result, address)
             if (!isTemp) saveCache(result)
             callbackSuccess(result)
@@ -357,8 +357,8 @@ class QXLocationManager private constructor(context: Context) {
      * Geocoder 在部分机型/无网络时会失败或超时，失败时传 null，由上层兜底为空字段。
      */
     private fun reverseGeocodeAsync(
-        wgsLat: Double,
-        wgsLng: Double,
+        queryLat: Double,
+        queryLng: Double,
         onDone: (Address?) -> Unit
     ) {
         val gc = geocoder
@@ -369,7 +369,7 @@ class QXLocationManager private constructor(context: Context) {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             try {
-                gc.getFromLocation(wgsLat, wgsLng, 1) { list ->
+                gc.getFromLocation(queryLat, queryLng, 1) { list ->
                     onDone(list.firstOrNull())
                 }
                 return
@@ -382,7 +382,7 @@ class QXLocationManager private constructor(context: Context) {
         workerHandler.post {
             val address = try {
                 @Suppress("DEPRECATION")
-                gc.getFromLocation(wgsLat, wgsLng, 1)?.firstOrNull()
+                gc.getFromLocation(queryLat, queryLng, 1)?.firstOrNull()
             } catch (e: Exception) {
                 Log.w(TAG, "geocoder sync failed: $e")
                 null
@@ -397,8 +397,17 @@ class QXLocationManager private constructor(context: Context) {
             result.put("state", address.adminArea ?: "")
             result.put("city", address.locality ?: address.subAdminArea ?: "")
             result.put("district", address.subLocality ?: "")
-            result.put("street", address.thoroughfare ?: address.featureName ?: "")
-            result.put("streetNum", address.subThoroughfare ?: "")
+            val streetNum = address.subThoroughfare.orEmpty()
+            val streetName = address.thoroughfare.orEmpty()
+            val featureName = address.featureName.orEmpty()
+            val street = when {
+                streetName.isNotEmpty() && streetNum.isNotEmpty() -> streetName + streetNum
+                streetName.isNotEmpty() -> streetName
+                featureName.isNotEmpty() -> featureName
+                else -> address.getAddressLine(0).orEmpty()
+            }
+            result.put("street", street)
+            result.put("streetNum", streetNum)
         } catch (_: Exception) {}
     }
 
@@ -554,8 +563,8 @@ object LocationConstants {
     const val SCC_LOCATION_POSITIONING_CACHE = "SCCLocationPositioningCache"
     const val KEY_PERMISSION_REQUESTED = "hasRequestedLocationPermission"
 
-    // 默认定位参数：50m 对应市区常见精度；8s 覆盖 GPS 冷启动。
-    const val DEFAULT_ACCURACY = 50
+    // 默认定位参数：20m 进一步偏向街道级精度；8s 提高高精度命中率。
+    const val DEFAULT_ACCURACY = 20
     const val DEFAULT_TIMEOUT = 8000
 
     // 权限请求码
