@@ -27,6 +27,7 @@ import java.net.URL
 import java.net.HttpURLConnection
 import androidx.core.content.FileProvider
 import android.os.StrictMode
+import android.provider.Settings
 import android.webkit.MimeTypeMap
 import com.jd.hybrid.QXWebViewActivity
 import com.jd.plugins.utils.OpenMapAppUtils
@@ -113,6 +114,16 @@ class QXBasePlugin : IBridgePlugin {
 
             "setNavigationBarStyle" -> {
                 handleSetNavigationBarStyle(webView, params, callback)
+                return true
+            }
+
+            "openWebView" -> {
+                handleOpenWebView(webView, params, callback)
+                return true
+            }
+
+            "openUrl" -> {
+                handleOpenUrl(webView, params, callback)
                 return true
             }
             else -> {
@@ -563,6 +574,244 @@ class QXBasePlugin : IBridgePlugin {
                     ?: QXWebViewActivity.NavigationBarStyle.fromJsValue(styleValue)
             }
             else -> null
+        }
+    }
+
+    /**
+     * 打开新的 WebView 页面
+     * H5 调用示例：
+     * QXBasePlugin.openWebView({
+     *   url: "https://xxx.com/page",
+     *   query: { id: 1, from: "h5" },   // 可选，会自动拼到 url 的 query 上
+     *   navHidden: true,                 // 可选，是否隐藏导航栏
+     *   immersive: true,                 // 可选，是否沉浸式状态栏
+     *   navTitle: "页面标题",            // 可选，原生导航栏标题
+     *   presentStyle: "push"             // iOS 兼容字段，Android 忽略
+     * })
+     */
+    private fun handleOpenWebView(
+        webView: IBridgeWebView?,
+        params: String?,
+        callback: IBridgeCallback?
+    ) {
+        val jsonObj = try {
+            JSONObject(params ?: "{}")
+        } catch (e: Exception) {
+            callback?.onError("参数解析失败")
+            return
+        }
+
+        val rawUrl = jsonObj.optString("url").trim()
+        if (rawUrl.isEmpty()) {
+            callback?.onError("url 不能为空")
+            return
+        }
+
+        val queryObj = jsonObj.optJSONObject("query")
+        val finalUrl = appendQueryParams(rawUrl, queryObj)
+
+        val navHidden = if (jsonObj.has("navHidden") && !jsonObj.isNull("navHidden")) {
+            jsonObj.optBoolean("navHidden", false)
+        } else {
+            null
+        }
+        val immersive = if (jsonObj.has("immersive") && !jsonObj.isNull("immersive")) {
+            jsonObj.optBoolean("immersive", true)
+        } else {
+            null
+        }
+        val navTitle = jsonObj.optString("navTitle").takeIf { it.isNotBlank() }
+
+        val activity = getActivityFromWebView(webView)
+        val launchContext: Context? = activity ?: context
+        if (launchContext == null) {
+            callback?.onError("获取上下文失败")
+            return
+        }
+
+        val intent = Intent(launchContext, QXWebViewActivity::class.java).apply {
+            putExtra(QXWebViewActivity.EXTRA_URL, finalUrl)
+            if (immersive != null) {
+                putExtra(QXWebViewActivity.EXTRA_IMMERSIVE, immersive)
+            }
+            if (navHidden != null) {
+                // navHidden=true 表示隐藏导航栏，对应 EXTRA_SHOW_NAV_BAR=false
+                putExtra(QXWebViewActivity.EXTRA_SHOW_NAV_BAR, !navHidden)
+            }
+            if (navTitle != null) {
+                putExtra(QXWebViewActivity.EXTRA_NAV_TITLE, navTitle)
+            }
+            if (launchContext !is Activity) {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        }
+
+        val launch: () -> Unit = {
+            try {
+                launchContext.startActivity(intent)
+                callback?.onSuccess(JSONObject().apply {
+                    put("code", 0)
+                    put("msg", "打开 WebView 成功")
+                    put("url", finalUrl)
+                })
+            } catch (e: Exception) {
+                Log.e(TAG, "打开 WebView 失败", e)
+                callback?.onError("打开 WebView 失败: ${e.message ?: "未知异常"}")
+            }
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            launch()
+        } else {
+            Handler(Looper.getMainLooper()).post(launch)
+        }
+    }
+
+    /**
+     * 打开 URL（系统设置、定位、蓝牙、电话、邮件、第三方 App 等）
+     * H5 调用示例：
+     * QXBasePlugin.openUrl({ type: "settings" })                   // 本 App 的设置页
+     * QXBasePlugin.openUrl({ type: "location" })                   // 定位设置
+     * QXBasePlugin.openUrl({ type: "notification" })               // 通知设置
+     * QXBasePlugin.openUrl({ type: "bluetooth" })                  // 蓝牙
+     * QXBasePlugin.openUrl({ type: "wifi" })                       // 无线局域网
+     * QXBasePlugin.openUrl({ url: "tel:10086" })                   // 拨号
+     * QXBasePlugin.openUrl({ url: "mailto:a@b.com" })              // 发邮件
+     * QXBasePlugin.openUrl({ url: "https://xxx.com", query: {a:1}}) // 任意 URL + 拼参数
+     */
+    private fun handleOpenUrl(
+        webView: IBridgeWebView?,
+        params: String?,
+        callback: IBridgeCallback?
+    ) {
+        val jsonObj = try {
+            JSONObject(params ?: "{}")
+        } catch (e: Exception) {
+            callback?.onError("参数解析失败")
+            return
+        }
+
+        val typeString = jsonObj.optString("type").trim().lowercase()
+        val inputUrl = jsonObj.optString("url").trim()
+        val queryObj = jsonObj.optJSONObject("query") ?: jsonObj.optJSONObject("params")
+
+        val activity = getActivityFromWebView(webView)
+        val launchContext: Context? = activity ?: context
+        if (launchContext == null) {
+            callback?.onError("获取上下文失败")
+            return
+        }
+
+        val intent = resolveSystemIntent(launchContext, typeString, inputUrl, queryObj)
+        if (intent == null) {
+            callback?.onError("url 或 type 不能同时为空")
+            return
+        }
+        if (launchContext !is Activity) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val finalUrl = intent.dataString ?: inputUrl
+
+        val launch: () -> Unit = {
+            try {
+                if (intent.resolveActivity(launchContext.packageManager) == null) {
+                    callback?.onError("当前设备无法打开此 URL")
+                    return@launch
+                }
+                launchContext.startActivity(intent)
+                callback?.onSuccess(JSONObject().apply {
+                    put("code", 0)
+                    put("msg", "打开成功")
+                    if (finalUrl.isNotEmpty()) put("url", finalUrl)
+                })
+            } catch (e: Exception) {
+                Log.e(TAG, "打开 URL 失败", e)
+                callback?.onError("打开失败: ${e.message ?: "未知异常"}")
+            }
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            launch()
+        } else {
+            Handler(Looper.getMainLooper()).post(launch)
+        }
+    }
+
+    /**
+     * 根据 type 解析系统页面 Intent，未匹配时按 url 兜底
+     */
+    private fun resolveSystemIntent(
+        ctx: Context,
+        type: String,
+        fallbackUrl: String,
+        queryObj: JSONObject?
+    ): Intent? {
+        return when (type) {
+            "settings", "app-settings", "appsettings" ->
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.fromParts("package", ctx.packageName, null)
+                }
+            "notification", "notifications", "notification-settings" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                        putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName)
+                    }
+                } else {
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.fromParts("package", ctx.packageName, null)
+                    }
+                }
+            }
+            "location", "location-settings" ->
+                Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+            "bluetooth", "ble" ->
+                Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
+            "wifi", "wlan" ->
+                Intent(Settings.ACTION_WIFI_SETTINGS)
+            "cellular", "mobile-data" ->
+                Intent(Settings.ACTION_DATA_ROAMING_SETTINGS)
+            "general" ->
+                Intent(Settings.ACTION_SETTINGS)
+            "privacy" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    Intent(Settings.ACTION_PRIVACY_SETTINGS)
+                } else {
+                    Intent(Settings.ACTION_SETTINGS)
+                }
+            }
+            "", "url", "custom" -> buildUrlIntent(fallbackUrl, queryObj)
+            else -> buildUrlIntent(fallbackUrl, queryObj)
+        }
+    }
+
+    private fun buildUrlIntent(url: String, queryObj: JSONObject?): Intent? {
+        if (url.isBlank()) return null
+        val finalUrl = appendQueryParams(url, queryObj)
+        val uri = try {
+            Uri.parse(finalUrl)
+        } catch (e: Exception) {
+            return null
+        }
+        return Intent(Intent.ACTION_VIEW, uri)
+    }
+
+    /**
+     * 将 JSON 参数拼到已有 URL 的 query 上（保留原 query，自动做百分号编码）
+     */
+    private fun appendQueryParams(urlString: String, params: JSONObject?): String {
+        if (params == null || params.length() == 0) return urlString
+        return try {
+            val uri = Uri.parse(urlString)
+            val builder = uri.buildUpon()
+            val keys = params.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val value = params.opt(key)
+                if (value == null || value == JSONObject.NULL) continue
+                builder.appendQueryParameter(key, value.toString())
+            }
+            builder.build().toString()
+        } catch (e: Exception) {
+            Log.d(TAG, "appendQueryParams failed: $e")
+            urlString
         }
     }
 

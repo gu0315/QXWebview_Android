@@ -16,9 +16,7 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ce963f5f-ade7-4206-9878-2cf5bade582a" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/location/QXLocationManager.kt" beforeDir="false" afterPath="$PROJECT_DIR$/qx_hybrid/src/main/java/com/jd/plugins/location/QXLocationManager.kt" afterDir="false" />
-    </list>
+    <list default="true" id="ce963f5f-ade7-4206-9878-2cf5bade582a" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
