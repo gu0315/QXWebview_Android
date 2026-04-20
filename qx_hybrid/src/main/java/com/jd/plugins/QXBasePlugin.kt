@@ -329,11 +329,13 @@ class QXBasePlugin : IBridgePlugin {
                 callback?.onError("获取Activity失败")
                 return
             }
+            // 解析参数，透传 requestPermission / accuracy / timeout 等字段
+            val paramsMap = parseParamsToMap(params)
             // 使用QXLocationManager获取位置信息
             val locationManager = QXLocationManager.getInstance(activity)
             // 设置回调
             locationManager.setCallback(callback)
-            locationManager.getLocation(activity)
+            locationManager.getLocation(activity, paramsMap)
         } catch (e: Exception) {
             Log.e(TAG, "处理定位请求失败", e)
             callback?.onError("处理定位请求失败")
@@ -561,6 +563,27 @@ class QXBasePlugin : IBridgePlugin {
                     ?: QXWebViewActivity.NavigationBarStyle.fromJsValue(styleValue)
             }
             else -> null
+        }
+    }
+
+    /**
+     * 将 JSON 字符串安全地解析为 Map<String, Any>，供插件透传参数使用
+     */
+    private fun parseParamsToMap(params: String?): Map<String, Any>? {
+        if (params.isNullOrBlank()) return null
+        return try {
+            val json = JSONObject(params)
+            val map = mutableMapOf<String, Any>()
+            val keys = json.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val value = json.opt(key) ?: continue
+                map[key] = value
+            }
+            map
+        } catch (e: Exception) {
+            Log.d(TAG, "parseParamsToMap failed: $e")
+            null
         }
     }
 
