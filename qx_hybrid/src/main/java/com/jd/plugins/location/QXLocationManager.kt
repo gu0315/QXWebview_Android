@@ -52,8 +52,6 @@ class QXLocationManager private constructor(context: Context) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val locationListeners = mutableListOf<LocationListener>()
-
-    // 逆地理在部分机型属于阻塞 IO，放到独立 HandlerThread 跑，避免阻塞主线程。
     private val workerThread: HandlerThread by lazy {
         HandlerThread("QXLocationWorker").apply { start() }
     }
@@ -63,7 +61,6 @@ class QXLocationManager private constructor(context: Context) {
     }
 
     private var locationCallback: IBridgeCallback? = null
-    private var permissionCallback: ((Boolean) -> Unit)? = null
 
     private var isCallbackInvoked = false
     private var bestLocation: Location? = null
@@ -113,6 +110,10 @@ class QXLocationManager private constructor(context: Context) {
         }
 
         startLocation()
+    }
+
+    private fun needAddress(): Boolean {
+        return (currentParams?.get("needAddress") as? Boolean) == true
     }
 
     // ===================== 权限 =====================
@@ -312,7 +313,8 @@ class QXLocationManager private constructor(context: Context) {
 
     /**
      * 核心：组装与 iOS 对齐的结果 JSON。
-     * 坐标统一由 WGS84 转换为 GCJ02（解决国内 GPS 偏移）。
+     * 坐标统一由 WGS84 转换为 GCJ02（解决国内 GPS 偏移）；
+     * 是否返回地址字段由前端参数决定。
      */
     private fun processLocation(location: Location) {
         if (isCallbackInvoked) return
@@ -348,8 +350,13 @@ class QXLocationManager private constructor(context: Context) {
 
         isCallbackInvoked = true
         release()
+        if (!needAddress()) {
+            saveCache(result)
+            callbackSuccess(result)
+            return
+        }
 
-        // 返回给前端继续使用 GCJ02，但 Geocoder 查询使用系统原始坐标，避免地址解析为空。
+        // 仅在前端显式要求地址时才做逆地理，默认优先快速返回坐标。
         reverseGeocodeAsync(location.latitude, location.longitude) { address ->
             fillAddress(result, address)
             saveCache(result)
@@ -357,10 +364,6 @@ class QXLocationManager private constructor(context: Context) {
         }
     }
 
-    /**
-     * 逆地理：Android 13+ 用系统异步 API，其余走 worker 线程同步 API。
-     * Geocoder 在部分机型/无网络时会失败或超时，失败时传 null，由上层兜底为空字段。
-     */
     private fun reverseGeocodeAsync(
         queryLat: Double,
         queryLng: Double,
@@ -380,7 +383,6 @@ class QXLocationManager private constructor(context: Context) {
                 return
             } catch (e: Exception) {
                 Log.w(TAG, "geocoder async failed: $e")
-                // 异步 API 异常时，降级为下面的同步实现。
             }
         }
 

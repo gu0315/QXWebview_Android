@@ -340,7 +340,7 @@ class QXBasePlugin : IBridgePlugin {
                 callback?.onError("获取Activity失败")
                 return
             }
-            // 解析参数，透传 requestPermission / accuracy / timeout 等字段
+            // 解析参数，透传 requestPermission / accuracy / timeout / needAddress 等字段
             val paramsMap = parseParamsToMap(params)
             // 使用QXLocationManager获取位置信息
             val locationManager = QXLocationManager.getInstance(activity)
