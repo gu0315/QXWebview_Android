@@ -250,8 +250,8 @@ class QXLocationManager private constructor(context: Context) {
             // minTime/minDistance 用来过滤高频无效回调；Looper 复用调用方线程。
             lm.requestLocationUpdates(
                 provider,
-                1000L,
-                1f,
+                500L,
+                0f,
                 listener,
                 Looper.myLooper()
             )
@@ -575,9 +575,9 @@ object LocationConstants {
     const val SCC_LOCATION_POSITIONING_CACHE = "SCCLocationPositioningCache"
     const val KEY_PERMISSION_REQUESTED = "hasRequestedLocationPermission"
 
-    // 默认定位参数：20m 进一步偏向街道级精度；8s 提高高精度命中率。
-    const val DEFAULT_ACCURACY = 20
-    const val DEFAULT_TIMEOUT = 8000
+    // 默认定位参数：优先首包速度；业务需要更高精度时可由前端显式传 accuracy/timeout。
+    const val DEFAULT_ACCURACY = 80
+    const val DEFAULT_TIMEOUT = 6000
 
     // 权限请求码
     const val PERMISSION_REQUEST_CODE = 1001
