@@ -711,11 +711,11 @@ class QXBasePlugin : IBridgePlugin {
         }
         val finalUrl = intent.dataString ?: inputUrl
 
-        val launch: () -> Unit = {
+        val launch: () -> Unit = launchBlock@{
             try {
                 if (intent.resolveActivity(launchContext.packageManager) == null) {
                     callback?.onError("当前设备无法打开此 URL")
-                    return@launch
+                    return@launchBlock
                 }
                 launchContext.startActivity(intent)
                 callback?.onSuccess(JSONObject().apply {
