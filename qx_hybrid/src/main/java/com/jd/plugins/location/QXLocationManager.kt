@@ -92,9 +92,13 @@ class QXLocationManager private constructor(context: Context) {
         activityRef = WeakReference(activity)
         currentParams = params
 
+        // 每次请求都回到默认值，避免上一笔调用的严格参数串到下一笔请求。
+        targetAccuracy = LocationConstants.DEFAULT_ACCURACY
+        timeout = LocationConstants.DEFAULT_TIMEOUT.toLong()
+
         params?.let {
-            targetAccuracy = (it["accuracy"] as? Number)?.toInt() ?: targetAccuracy
-            timeout = (it["timeout"] as? Number)?.toLong() ?: timeout
+            targetAccuracy = maxOf(1, (it["accuracy"] as? Number)?.toInt() ?: targetAccuracy)
+            timeout = maxOf(1000L, (it["timeout"] as? Number)?.toLong() ?: timeout)
         }
 
         if (!hasLocationPermission()) {
@@ -215,10 +219,10 @@ class QXLocationManager private constructor(context: Context) {
 
         val best = listOfNotNull(gps, net)
             .filter { isValidLocation(it) }
-            // 历史点也要满足当前目标精度，避免临时结果先把 street 落到附近道路上。
+            // 临时结果优先“先给坐标”，允许精度比正式门槛稍宽一些，最终结果仍由实时定位兜底。
             .filter {
-                System.currentTimeMillis() - it.time < TimeUnit.SECONDS.toMillis(30) &&
-                        it.accuracy <= targetAccuracy
+                System.currentTimeMillis() - it.time < TimeUnit.SECONDS.toMillis(120) &&
+                        it.accuracy <= maxOf(targetAccuracy, 80)
             }
             .maxByOrNull { providerWeight(it) }
 
@@ -344,10 +348,12 @@ class QXLocationManager private constructor(context: Context) {
             release()
         }
 
-        // 返回给前端的是 GCJ02，这里也使用同一坐标系做逆地理，避免国内场景街道偏移。
-        reverseGeocodeAsync(lat, lng) { address ->
+        // 返回给前端继续使用 GCJ02，但 Geocoder 查询使用系统原始坐标，避免地址解析为空。
+        reverseGeocodeAsync(location.latitude, location.longitude) { address ->
             fillAddress(result, address)
-            if (!isTemp) saveCache(result)
+            if (!isTemp) {
+                saveCache(result)
+            }
             callbackSuccess(result)
         }
     }
@@ -543,9 +549,11 @@ class QXLocationManager private constructor(context: Context) {
     }
 
     private fun clear() {
+        release()
         isCallbackInvoked = false
         bestLocation = null
-        locationListeners.clear()
+        targetAccuracy = LocationConstants.DEFAULT_ACCURACY
+        timeout = LocationConstants.DEFAULT_TIMEOUT.toLong()
     }
 
     fun release() {
