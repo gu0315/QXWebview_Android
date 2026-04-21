@@ -162,9 +162,6 @@ class QXLocationManager private constructor(context: Context) {
     private fun handlePermissionDenied() {
         if (isCallbackInvoked) return
         isCallbackInvoked = true
-
-        val requestPermission = (currentParams?.get("requestPermission") as? Boolean) ?: false
-
         val result = buildEmptyResult(
             locationType = "failure",
             hasPermission = false,
@@ -173,22 +170,6 @@ class QXLocationManager private constructor(context: Context) {
             put("msg", LocationConstants.PERMISSION_DENIED_MSG)
         }
         callbackSuccess(result)
-
-        if (requestPermission) {
-            activityRef?.get()?.let { openAppSettings(it) }
-        }
-    }
-
-    private fun openAppSettings(activity: Activity) {
-        try {
-            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                data = Uri.fromParts("package", activity.packageName, null)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            activity.startActivity(intent)
-        } catch (e: Exception) {
-            Log.e(TAG, "openAppSettings failed: $e")
-        }
     }
 
     // ===================== 定位主流程 =====================

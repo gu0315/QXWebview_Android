@@ -766,9 +766,6 @@ class QXBasePlugin : IBridgePlugin {
         }
     }
 
-    /**
-     * 根据 type 解析系统页面 Intent，未匹配时按 url 兜底
-     */
     private fun resolveSystemIntent(
         ctx: Context,
         type: String,
@@ -776,21 +773,17 @@ class QXBasePlugin : IBridgePlugin {
         queryObj: JSONObject?
     ): Intent? {
         return when (type) {
-            "settings", "app-settings", "appsettings" ->
-                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                    data = Uri.fromParts("package", ctx.packageName, null)
-                }
-            "notification", "notifications", "notification-settings" -> {
+            "settings", "app-settings", "appsettings",
+            "camera", "camera-settings",
+            "photo", "photos", "gallery" ->
+                appDetailsIntent(ctx)
+            "notification", "notifications", "notification-settings" ->
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                        putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName)
-                    }
+                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName)
                 } else {
-                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                        data = Uri.fromParts("package", ctx.packageName, null)
-                    }
+                    appDetailsIntent(ctx)
                 }
-            }
             "location", "location-settings" ->
                 Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
             "bluetooth", "ble" ->
@@ -801,17 +794,20 @@ class QXBasePlugin : IBridgePlugin {
                 Intent(Settings.ACTION_DATA_ROAMING_SETTINGS)
             "general" ->
                 Intent(Settings.ACTION_SETTINGS)
-            "privacy" -> {
+            "privacy" ->
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     Intent(Settings.ACTION_PRIVACY_SETTINGS)
                 } else {
                     Intent(Settings.ACTION_SETTINGS)
                 }
-            }
-            "", "url", "custom" -> buildUrlIntent(fallbackUrl, queryObj)
             else -> buildUrlIntent(fallbackUrl, queryObj)
         }
     }
+
+    private fun appDetailsIntent(ctx: Context): Intent =
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.fromParts("package", ctx.packageName, null)
+        }
 
     private fun buildUrlIntent(url: String, queryObj: JSONObject?): Intent? {
         if (url.isBlank()) return null
