@@ -775,7 +775,7 @@ class QXBasePlugin : IBridgePlugin {
         return when (type) {
             "settings", "app-settings", "appsettings",
             "camera", "camera-settings",
-            "photo", "photos", "gallery" ->
+            "photo", "photos", "gallery","location", "location-settings" ->
                 appDetailsIntent(ctx)
             "notification", "notifications", "notification-settings" ->
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -784,8 +784,6 @@ class QXBasePlugin : IBridgePlugin {
                 } else {
                     appDetailsIntent(ctx)
                 }
-            "location", "location-settings" ->
-                Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
             "bluetooth", "ble" ->
                 Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
             "wifi", "wlan" ->
