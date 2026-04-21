@@ -72,7 +72,7 @@ object JDBridgeManager {
         callbackId: String? = null,
         status: String = STATUS_SUCCESS,
         result: Any? = null,
-        msg: String? = null
+        msg: Any? = null
     ) {
         if (functionName.isNotEmpty()) {
             val javascriptStr = "$functionName && $functionName('${

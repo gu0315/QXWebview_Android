@@ -439,7 +439,9 @@ class JDBridge(val webView: IBridgeWebView) : IProxy {
                             if (it.status == STATUS_SUCCESS) {
                                 cb.onSuccess(it.data)
                             } else {
-                                cb.onError(it.msg)
+                                // `msg` 对外是 `Any?`（可能是 JSONObject），
+                                // 但 `IBridgeCallback.onError` 只接受 String，所以这里做一次安全转换。
+                                cb.onError(it.msg?.toString())
                             }
                         } else {
                             cb.onProgress(it.data)
@@ -457,13 +459,13 @@ class JDBridge(val webView: IBridgeWebView) : IProxy {
         callbackId: String? = null,
         status: String,
         data: Any? = null,
-        msg: String? = null,
+        msg: Any? = null,
         complete: Boolean = true
     ) {
         webView.runOnMain(Runnable {
             webView.evaluateJavascript(
                 JS_RESPOND_TO_WEB.format(
-                    "'${Response(status, callbackId, data, msg, complete)}'"
+                    "'${Response(status, callbackId, data, normalizeMsg(msg), complete)}'"
                 ),
                 null
             )
@@ -475,10 +477,34 @@ class JDBridge(val webView: IBridgeWebView) : IProxy {
         callbackId: String? = null,
         status: String,
         data: Any? = null,
-        msg: String? = null
+        msg: Any? = null
     ) {
         callbackName?.let {
-            JDBridgeManager.callback2H5(webView, callbackName, callbackId, status, data, msg)
+            JDBridgeManager.callback2H5(
+                webView, callbackName, callbackId, status, data, normalizeMsg(msg)
+            )
+        }
+    }
+
+    /**
+     * 若 [msg] 是形如 `{...}` / `[...]` 的结构化 JSON 字符串（常见于 `QXBridgeError.make(...)` 的输出），
+     * 则解析成 [JSONObject] / [JSONArray] 再下发；这样 H5 拿到的 `msg` 是对象而不是字符串，
+     * 和 iOS `NSError.userInfo` 下发的语义保持一致。
+     * 非 JSON 字符串或其它类型原样返回。
+     */
+    private fun normalizeMsg(msg: Any?): Any? {
+        if (msg !is String) return msg
+        val trimmed = msg.trim()
+        if (trimmed.isEmpty()) return msg
+        val first = trimmed[0]
+        if (first != '{' && first != '[') return msg
+        return try {
+            when (first) {
+                '{' -> JSONObject(trimmed)
+                else -> JSONArray(trimmed)
+            }
+        } catch (_: JSONException) {
+            msg
         }
     }
 

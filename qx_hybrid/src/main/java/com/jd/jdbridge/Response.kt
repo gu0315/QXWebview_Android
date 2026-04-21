@@ -32,7 +32,14 @@ data class Response(
     val status: String,
     val callbackId: String? = null,
     val data: Any? = null,
-    val msg: String? = null,
+    /**
+     * `msg` 允许是 `String`、`JSONObject` 或 `JSONArray`：
+     * - 当 Plugin 通过 `IBridgeCallback.onError(...)` 传递的是结构化 JSON 字符串
+     *   （例如 `QXBridgeError.make(...)` 的输出）时，上层会先把它解析成 `JSONObject`
+     *   再塞进来，H5 侧拿到的就是一个对象（与 iOS `NSError.userInfo` 对齐），
+     *   而不是一段 JSON 字符串，避免 H5 还要再 `JSON.parse(res.message)`。
+     */
+    val msg: Any? = null,
     val complete: Boolean = true
 ) {
 
@@ -58,6 +65,6 @@ internal fun JSONObject.toResponse(): Response {
         optString("status", "0"),
         optString("callbackId", "").ifEmpty { null },
         opt("data"),
-        optString("msg", "").ifEmpty { null },
+        opt("msg")?.takeIf { it != JSONObject.NULL },
         optBoolean("complete", true))
 }
