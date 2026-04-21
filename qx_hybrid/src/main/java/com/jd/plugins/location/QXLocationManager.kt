@@ -320,7 +320,7 @@ class QXLocationManager private constructor(context: Context) {
         val (lat, lng) = try {
             GCJ02Converter.wgs84ToGcj02(location.latitude, location.longitude)
         } catch (e: Exception) {
-            Pair(location.latitude, location.longitude)
+            GCJ02Converter.LatLng(location.latitude, location.longitude)
         }
 
         val speed = if (location.hasSpeed()) location.speed.toDouble() else -1.0
