@@ -112,10 +112,6 @@ class QXLocationManager private constructor(context: Context) {
         startLocation()
     }
 
-    private fun needAddress(): Boolean {
-        return (currentParams?.get("needAddress") as? Boolean) == true
-    }
-
     // ===================== 权限 =====================
     private fun hasLocationPermission(): Boolean {
         val ctx = context ?: return false
@@ -314,7 +310,9 @@ class QXLocationManager private constructor(context: Context) {
     /**
      * 核心：组装与 iOS 对齐的结果 JSON。
      * 坐标统一由 WGS84 转换为 GCJ02（解决国内 GPS 偏移）；
-     * 是否返回地址字段由前端参数决定。
+     * 是否返回地址字段由前端参数决定：
+     * - 默认返回省/市/区；
+     * - 显式传 needAddress=true 时再补充 street / streetNum。
      */
     private fun processLocation(location: Location) {
         if (isCallbackInvoked) return
@@ -348,17 +346,19 @@ class QXLocationManager private constructor(context: Context) {
             put("streetNum", "")
         }
 
+        // needAddress 三态：不传 -> 省/市/区；true -> 完整地址；false -> 仅坐标。
+        val needAddress = currentParams?.get("needAddress") as? Boolean
+
         isCallbackInvoked = true
         release()
-        if (!needAddress()) {
+        if (needAddress == false) {
             saveCache(result)
             callbackSuccess(result)
             return
         }
 
-        // 仅在前端显式要求地址时才做逆地理，默认优先快速返回坐标。
         reverseGeocodeAsync(location.latitude, location.longitude) { address ->
-            fillAddress(result, address)
+            fillAddress(result, address, includeStreet = needAddress == true)
             saveCache(result)
             callbackSuccess(result)
         }
@@ -398,12 +398,13 @@ class QXLocationManager private constructor(context: Context) {
         }
     }
 
-    private fun fillAddress(result: JSONObject, address: Address?) {
+    private fun fillAddress(result: JSONObject, address: Address?, includeStreet: Boolean) {
         address ?: return
         try {
             result.put("state", address.adminArea ?: "")
             result.put("city", address.locality ?: address.subAdminArea ?: "")
             result.put("district", address.subLocality ?: "")
+            if (!includeStreet) return
             val streetNum = address.subThoroughfare.orEmpty()
             val streetName = address.thoroughfare.orEmpty()
             val featureName = address.featureName.orEmpty()
