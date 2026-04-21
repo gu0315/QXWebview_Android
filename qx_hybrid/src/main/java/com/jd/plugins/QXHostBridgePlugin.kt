@@ -37,7 +37,7 @@ class QXHostBridgePlugin : IBridgePlugin {
             }
         } catch (e: Exception) {
             Log.e(TAG, "参数解析失败", e)
-            callbackError(callback, "参数错误: ${e.message}")
+            callbackError(callback, QXBridgeErrorCode.INVALID_PARAMS, "参数错误: ${e.message}")
             return true
         }
 
@@ -52,7 +52,7 @@ class QXHostBridgePlugin : IBridgePlugin {
     private fun openPage(params: Map<String, Any?>, callback: IBridgeCallback?) {
         val url = params["url"] as? String
         if (url.isNullOrEmpty()) {
-            callbackError(callback, "缺少 url 参数")
+            callbackError(callback, QXBridgeErrorCode.INVALID_PARAMS, "缺少 url 参数")
             return
         }
 
@@ -65,7 +65,7 @@ class QXHostBridgePlugin : IBridgePlugin {
                 callbackSuccess(callback, result ?: mapOf("success" to true))
             }
         } else {
-            callbackError(callback, "宿主 APP 未实现 delegate")
+            callbackError(callback, QXBridgeErrorCode.UNSUPPORTED, "宿主 APP 未实现 delegate")
         }
     }
 
@@ -77,7 +77,7 @@ class QXHostBridgePlugin : IBridgePlugin {
                 callbackSuccess(callback, result ?: mapOf("success" to true))
             }
         } else {
-            callbackError(callback, "宿主 APP 未实现 delegate")
+            callbackError(callback, QXBridgeErrorCode.UNSUPPORTED, "宿主 APP 未实现 delegate")
         }
     }
 
@@ -93,13 +93,17 @@ class QXHostBridgePlugin : IBridgePlugin {
             callback?.onSuccess(jsonData)
         } catch (e: Exception) {
             Log.e(TAG, "回调成功时发生错误", e)
-            callbackError(callback, "数据格式化失败: ${e.message}")
+            callbackError(callback, QXBridgeErrorCode.FAILURE, "数据格式化失败: ${e.message}")
         }
     }
 
-    private fun callbackError(callback: IBridgeCallback?, message: String) {
-        Log.e(TAG, "回调失败: $message")
-        callback?.onError(message)
+    private fun callbackError(
+        callback: IBridgeCallback?,
+        code: QXBridgeErrorCode,
+        message: String
+    ) {
+        Log.e(TAG, "回调失败: [${code.code}] $message")
+        callback?.onError(QXBridgeError.make(code, message))
     }
 
     private fun JSONObject.toMap(): Map<String, Any?> {

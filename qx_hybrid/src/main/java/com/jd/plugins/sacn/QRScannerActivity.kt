@@ -44,6 +44,7 @@ import com.google.zxing.ResultPoint
 import com.google.zxing.common.GlobalHistogramBinarizer
 import com.google.zxing.common.HybridBinarizer
 import com.jd.plugins.ClosureRegistry
+import com.jd.plugins.QXBridgeErrorCode
 import com.journeyapps.barcodescanner.BarcodeCallback
 import com.journeyapps.barcodescanner.BarcodeResult
 import com.journeyapps.barcodescanner.CaptureManager
@@ -136,8 +137,8 @@ class QRScannerActivity : AppCompatActivity() {
         if (checkCameraPermission()) {
             initScanner(savedInstanceState)
         } else {
-            handlePermissionDenied(ScanQrBridge.failJson("没有相机权限"))
-            onBackPressedDispatcher.onBackPressed()
+            handlePermissionDenied(ScanQrBridge.failJson("没有相机权限", QXBridgeErrorCode.NO_PERMISSION))
+            finish()
         }
     }
 
@@ -150,13 +151,11 @@ class QRScannerActivity : AppCompatActivity() {
 
     /** [payload] 为与 iOS 一致的 JSON 字符串（含 message + success） */
     private fun handlePermissionDenied(payload: String) {
-        mainHandler.post {
-            try {
-                val callbackObj = ClosureRegistry.take(callbackId)
-                callbackObj?.onError(payload) ?: Log.w(NAME, "回调对象为空: callbackId=$callbackId")
-            } catch (e: Exception) {
-                Log.e(NAME, "权限拒绝回调失败", e)
-            }
+        try {
+            val callbackObj = ClosureRegistry.take(callbackId)
+            callbackObj?.onError(payload) ?: Log.w(NAME, "回调对象为空: callbackId=$callbackId")
+        } catch (e: Exception) {
+            Log.e(NAME, "权限拒绝回调失败", e)
         }
     }
 
@@ -192,7 +191,7 @@ class QRScannerActivity : AppCompatActivity() {
             Log.d(NAME, "扫描器初始化成功")
         } catch (e: Exception) {
             Log.e(NAME, "扫描器初始化失败", e)
-            handlePermissionDenied(ScanQrBridge.failJson("未知错误"))
+            handlePermissionDenied(ScanQrBridge.failJson("未知错误", QXBridgeErrorCode.UNKNOWN))
             finish()
         }
     }
@@ -507,7 +506,7 @@ class QRScannerActivity : AppCompatActivity() {
                     vibrateShort()
                     callbackObj?.onSuccess(ScanQrBridge.successPayload(result))
                 } else {
-                    callbackObj?.onError(ScanQrBridge.failJson("扫描结果为空"))
+                    callbackObj?.onError(ScanQrBridge.failJson("扫描结果为空", QXBridgeErrorCode.CANCELLED))
                 }
             } catch (e: Exception) {
                 Log.e(NAME, "返回扫描结果失败", e)

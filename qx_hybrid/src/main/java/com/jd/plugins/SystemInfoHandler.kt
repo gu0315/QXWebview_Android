@@ -48,7 +48,7 @@ class SystemInfoHandler {
             val activityContext = getActivityFromView(webView?.view)
             val context = activityContext ?: webView?.view?.context ?: globalAppContext
             if (context == null) {
-                callback?.onError("Context为空，无法计算安全区")
+                callback?.onError(QXBridgeError.notFound("Context为空，无法计算安全区"))
                 return
             }
 
@@ -75,7 +75,7 @@ class SystemInfoHandler {
             callback?.onSuccess(systemInfo.toString())
         } catch (e: Exception) {
             Log.e(NAME, "获取系统信息失败", e)
-            callback?.onError("获取系统信息失败：${e.message}")
+            callback?.onError(QXBridgeError.failure("获取系统信息失败：${e.message}"))
         }
     }
 

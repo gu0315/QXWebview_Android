@@ -33,6 +33,7 @@ import com.jd.plugins.ClosureRegistry
 import com.jd.plugins.QXBLEventType
 import com.jd.plugins.QXBleErrorCode
 import com.jd.plugins.QXBleUtils
+import com.jd.plugins.QXBridgeError
 import com.jd.plugins.utils.BleDataParser
 import org.json.JSONArray
 import org.json.JSONObject
@@ -171,7 +172,7 @@ class QXBlePlugin : IBridgePlugin {
                         val json = JSONObject(it)
                         startBleScan(json, webView, callback)
                     } catch (e: Exception) {
-                        callback?.onError("参数解析失败: ${e.message}")
+                        callback?.onError(QXBridgeError.invalidParams("参数解析失败: ${e.message}"))
                     }
                 }
 
@@ -190,7 +191,7 @@ class QXBlePlugin : IBridgePlugin {
                         val deviceId = json.getString("deviceId")
                         connectBle(it, webView, callback)
                     } catch (e: Exception) {
-                        callback?.onError("参数解析失败: ${e.message}")
+                        callback?.onError(QXBridgeError.invalidParams("参数解析失败: ${e.message}"))
                     }
                 }
                 true
@@ -211,7 +212,7 @@ class QXBlePlugin : IBridgePlugin {
                             getBLEDeviceServices(it, callback)
                         }
                     } catch (e: Exception) {
-                        callback?.onError("参数解析失败: ${e.message}")
+                        callback?.onError(QXBridgeError.invalidParams("参数解析失败: ${e.message}"))
                     }
                 }
                 true
@@ -232,7 +233,7 @@ class QXBlePlugin : IBridgePlugin {
                             getDeviceCharacteristics(it, callback)
                         }
                     } catch (e: Exception) {
-                        callback?.onError("参数解析失败: ${e.message}")
+                        callback?.onError(QXBridgeError.invalidParams("参数解析失败: ${e.message}"))
                     }
                 }
                 true
@@ -243,7 +244,7 @@ class QXBlePlugin : IBridgePlugin {
                     try {
                         disconnectBle(it, callback)
                     } catch (e: Exception) {
-                        callback?.onError("参数解析失败: ${e.message}")
+                        callback?.onError(QXBridgeError.invalidParams("参数解析失败: ${e.message}"))
                     }
                 }
                 true
@@ -254,7 +255,7 @@ class QXBlePlugin : IBridgePlugin {
                     try {
                         sendBleData(it, callback)
                     } catch (e: Exception) {
-                        callback?.onError("参数解析失败: ${e.message}")
+                        callback?.onError(QXBridgeError.invalidParams("参数解析失败: ${e.message}"))
                     }
                 }
                 true
@@ -268,7 +269,7 @@ class QXBlePlugin : IBridgePlugin {
                         val mtu = json.optInt("mtu", 98)
                         requestMtu(deviceId, mtu, callback)
                     } catch (e: Exception) {
-                        callback?.onError("参数解析失败: ${e.message}")
+                        callback?.onError(QXBridgeError.invalidParams("参数解析失败: ${e.message}"))
                     }
                 }
                 true
@@ -279,7 +280,7 @@ class QXBlePlugin : IBridgePlugin {
                     try {
                         notifyBLECharacteristicValueChange(it, callback, webView)
                     } catch (e: Exception) {
-                        callback?.onError("参数解析失败: ${e.message}")
+                        callback?.onError(QXBridgeError.invalidParams("参数解析失败: ${e.message}"))
                     }
                 }
                 true

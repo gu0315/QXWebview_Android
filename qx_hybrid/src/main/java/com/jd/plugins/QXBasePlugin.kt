@@ -17,6 +17,7 @@ import com.jd.plugins.location.QXLocationManager
 import com.jd.plugins.sacn.QRScannerActivity
 import com.jd.plugins.sacn.ScanQrBridge
 import com.jd.plugins.utils.DeviceUtils
+import org.json.JSONArray
 import org.json.JSONObject
 import android.os.Handler
 import android.os.Looper
@@ -40,9 +41,11 @@ class QXBasePlugin : IBridgePlugin {
     private val TAG = "QXBasePlugin"
     val NAME = "QXBasePlugin"
 
-    // 保存权限请求回调的映射
-    private val permissionCallbackMap = mutableMapOf<Int, (Boolean) -> Unit>()
     private var context: Context? = null
+
+    companion object {
+        private const val REQUEST_CODE_CAMERA_PERMISSION = 1001
+    }
 
     /**
      * 初始化插件
@@ -58,7 +61,6 @@ class QXBasePlugin : IBridgePlugin {
      */
     fun destroy() {
         context = null
-        permissionCallbackMap.clear()
     }
 
 
@@ -150,7 +152,7 @@ class QXBasePlugin : IBridgePlugin {
                 context = webView?.view?.context
             }
             if (context == null) {
-                callback?.onError("获取设备信息失败")
+                callback?.onError(QXBridgeError.failure("获取设备信息失败"))
                 return
             }
             systemInfo.put("appPlatform", "android")
@@ -167,7 +169,7 @@ class QXBasePlugin : IBridgePlugin {
             callback?.onSuccess(systemInfo)
         } catch (e: Exception) {
             Log.e(TAG, "获取设备信息失败", e)
-            callback?.onError("获取设备信息失败")
+            callback?.onError(QXBridgeError.failure("获取设备信息失败"))
         }
     }
 
@@ -184,7 +186,7 @@ class QXBasePlugin : IBridgePlugin {
             callback?.onSuccess(null)
         } catch (e: Exception) {
             Log.e(TAG, "关闭WebView失败", e)
-            callback?.onError("关闭WebView失败")
+            callback?.onError(QXBridgeError.failure("关闭WebView失败"))
         }
     }
 
@@ -200,11 +202,11 @@ class QXBasePlugin : IBridgePlugin {
             if (activity != null) {
                 processBackClick(webView, activity, callback)
             } else {
-                callback?.onError("获取Activity失败")
+                callback?.onError(QXBridgeError.notFound("获取Activity失败"))
             }
         } catch (e: Exception) {
             Log.e(TAG, "处理返回失败", e)
-            callback?.onError("处理返回失败")
+            callback?.onError(QXBridgeError.failure("处理返回失败"))
         }
     }
 
@@ -227,7 +229,7 @@ class QXBasePlugin : IBridgePlugin {
             }
         } catch (e: Exception) {
             Log.e(TAG, "处理返回逻辑失败", e)
-            callback?.onError("处理返回逻辑失败")
+            callback?.onError(QXBridgeError.failure("处理返回逻辑失败"))
         }
     }
 
@@ -249,7 +251,7 @@ class QXBasePlugin : IBridgePlugin {
             }
         } catch (e: Exception) {
             Log.e(TAG, "执行返回逻辑失败", e)
-            callback?.onError("执行返回逻辑失败")
+            callback?.onError(QXBridgeError.failure("执行返回逻辑失败"))
         }
     }
 
@@ -271,7 +273,7 @@ class QXBasePlugin : IBridgePlugin {
         try {
             val activity = getActivityFromWebView(webView)
             if (activity == null) {
-                callback?.onError(ScanQrBridge.failJson("无法获取页面"))
+                callback?.onError(ScanQrBridge.failJson("无法获取页面", QXBridgeErrorCode.NOT_FOUND))
                 return
             }
 
@@ -281,29 +283,58 @@ class QXBasePlugin : IBridgePlugin {
                     Manifest.permission.CAMERA
                 ) != PackageManager.PERMISSION_GRANTED
             ) {
-                // 请求权限
-                ActivityCompat.requestPermissions(
-                    activity,
-                    arrayOf(Manifest.permission.CAMERA),
-                    1001
-                )
-                // 保存回调，等待权限结果
-                permissionCallbackMap[1001] = { granted ->
-                    if (granted) {
-                        // 权限已授予，启动扫描
-                        startScanActivity(activity, callback)
-                    } else {
-                        callback?.onError(ScanQrBridge.failJson("没有相机权限"))
-                    }
-                }
+                requestCameraPermission(activity, callback)
             } else {
                 // 权限已授予，直接启动扫描
                 startScanActivity(activity, callback)
             }
         } catch (e: Exception) {
             Log.e(TAG, "处理扫描请求失败", e)
-            callback?.onError(ScanQrBridge.failJson("未知错误"))
+            callback?.onError(ScanQrBridge.failJson("未知错误", QXBridgeErrorCode.UNKNOWN))
         }
+    }
+
+    /**
+     * 请求相机权限，复用 QXWebViewActivity 透传的 onRequestPermissionsResult 事件
+     * 授权成功则启动扫描；用户拒绝或异常时都会通过 [callback] 回传失败，避免 H5 侧永久 pending
+     */
+    private fun requestCameraPermission(activity: Activity, callback: IBridgeCallback?) {
+        ClosureRegistry.register("onRequestPermissionsResult", object : IBridgeCallback {
+            override fun onSuccess(result: Any?) {
+                try {
+                    val json = JSONObject(result?.toString() ?: "")
+                    if (json.optInt("requestCode", -1) != REQUEST_CODE_CAMERA_PERMISSION) return
+                    val permissions = json.optJSONArray("permissions") ?: JSONArray()
+                    val grantResults = json.optJSONArray("grantResults") ?: JSONArray()
+                    var granted = false
+                    for (i in 0 until permissions.length()) {
+                        if (permissions.optString(i) == Manifest.permission.CAMERA) {
+                            granted = grantResults.optInt(i, PackageManager.PERMISSION_DENIED) ==
+                                PackageManager.PERMISSION_GRANTED
+                            break
+                        }
+                    }
+                    if (granted) {
+                        startScanActivity(activity, callback)
+                    } else {
+                        callback?.onError(ScanQrBridge.failJson("没有相机权限", QXBridgeErrorCode.NO_PERMISSION))
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "相机权限回调解析失败", e)
+                    callback?.onError(ScanQrBridge.failJson("没有相机权限", QXBridgeErrorCode.NO_PERMISSION))
+                }
+            }
+
+            override fun onError(errMsg: String?) {
+                callback?.onError(ScanQrBridge.failJson("没有相机权限", QXBridgeErrorCode.NO_PERMISSION))
+            }
+        })
+
+        ActivityCompat.requestPermissions(
+            activity,
+            arrayOf(Manifest.permission.CAMERA),
+            REQUEST_CODE_CAMERA_PERMISSION,
+        )
     }
 
     /**
@@ -322,7 +353,7 @@ class QXBasePlugin : IBridgePlugin {
             activity.startActivityForResult(intent, 1002)
         } catch (e: Exception) {
             Log.e(TAG, "启动扫描活动失败", e)
-            callback?.onError(ScanQrBridge.failJson("未知错误"))
+            callback?.onError(ScanQrBridge.failJson("未知错误", QXBridgeErrorCode.UNKNOWN))
         }
     }
 
@@ -337,7 +368,7 @@ class QXBasePlugin : IBridgePlugin {
         try {
             val activity = getActivityFromWebView(webView)
             if (activity == null) {
-                callback?.onError("获取Activity失败")
+                callback?.onError(QXBridgeError.notFound("获取Activity失败"))
                 return
             }
             // 解析参数，透传 requestPermission / accuracy / timeout / needAddress 等字段
@@ -349,7 +380,7 @@ class QXBasePlugin : IBridgePlugin {
             locationManager.getLocation(activity, paramsMap)
         } catch (e: Exception) {
             Log.e(TAG, "处理定位请求失败", e)
-            callback?.onError("处理定位请求失败")
+            callback?.onError(QXBridgeError.failure("处理定位请求失败"))
         }
     }
 
@@ -496,16 +527,16 @@ class QXBasePlugin : IBridgePlugin {
             lng = jsonObj.optString("longitude", "")
             name = jsonObj.optString("name", "")
         } catch (e: Exception) {
-            callback?.onError("参数解析失败")
+            callback?.onError(QXBridgeError.invalidParams("参数解析失败"))
             return
         }
         if (lat.isEmpty() || lng.isEmpty()) {
-            callback?.onError("经纬度缺失")
+            callback?.onError(QXBridgeError.invalidParams("经纬度缺失"))
             return
         }
         val activity = getActivityFromWebView(webView)
         if (activity == null) {
-            callback?.onError("获取Activity失败")
+            callback?.onError(QXBridgeError.notFound("获取Activity失败"))
             return
         }
         Log.e(TAG, name)
@@ -524,14 +555,14 @@ class QXBasePlugin : IBridgePlugin {
     ) {
         val activity = getActivityFromWebView(webView)
         if (activity !is QXWebViewActivity) {
-            callback?.onError("当前页面不支持设置导航栏样式")
+            callback?.onError(QXBridgeError.unsupported("当前页面不支持设置导航栏样式"))
             return
         }
 
         val jsonObj = try {
             JSONObject(params ?: "{}")
         } catch (e: Exception) {
-            callback?.onError("参数解析失败")
+            callback?.onError(QXBridgeError.invalidParams("参数解析失败"))
             return
         }
 
@@ -542,7 +573,7 @@ class QXBasePlugin : IBridgePlugin {
         }
         val style = parseNavigationBarStyle(styleValue)
         if (style == null) {
-            callback?.onError("style 参数仅支持 default/black 或 0/1")
+            callback?.onError(QXBridgeError.invalidParams("style 参数仅支持 default/black 或 0/1"))
             return
         }
 
@@ -597,13 +628,13 @@ class QXBasePlugin : IBridgePlugin {
         val jsonObj = try {
             JSONObject(params ?: "{}")
         } catch (e: Exception) {
-            callback?.onError("参数解析失败")
+            callback?.onError(QXBridgeError.invalidParams("参数解析失败"))
             return
         }
 
         val rawUrl = jsonObj.optString("url").trim()
         if (rawUrl.isEmpty()) {
-            callback?.onError("url 不能为空")
+            callback?.onError(QXBridgeError.invalidParams("url 不能为空"))
             return
         }
 
@@ -625,7 +656,7 @@ class QXBasePlugin : IBridgePlugin {
         val activity = getActivityFromWebView(webView)
         val launchContext: Context? = activity ?: context
         if (launchContext == null) {
-            callback?.onError("获取上下文失败")
+            callback?.onError(QXBridgeError.notFound("获取上下文失败"))
             return
         }
 
@@ -656,7 +687,7 @@ class QXBasePlugin : IBridgePlugin {
                 })
             } catch (e: Exception) {
                 Log.e(TAG, "打开 WebView 失败", e)
-                callback?.onError("打开 WebView 失败: ${e.message ?: "未知异常"}")
+                callback?.onError(QXBridgeError.failure("打开 WebView 失败: ${e.message ?: "未知异常"}"))
             }
         }
         if (Looper.myLooper() == Looper.getMainLooper()) {
@@ -686,7 +717,7 @@ class QXBasePlugin : IBridgePlugin {
         val jsonObj = try {
             JSONObject(params ?: "{}")
         } catch (e: Exception) {
-            callback?.onError("参数解析失败")
+            callback?.onError(QXBridgeError.invalidParams("参数解析失败"))
             return
         }
 
@@ -697,13 +728,13 @@ class QXBasePlugin : IBridgePlugin {
         val activity = getActivityFromWebView(webView)
         val launchContext: Context? = activity ?: context
         if (launchContext == null) {
-            callback?.onError("获取上下文失败")
+            callback?.onError(QXBridgeError.notFound("获取上下文失败"))
             return
         }
 
         val intent = resolveSystemIntent(launchContext, typeString, inputUrl, queryObj)
         if (intent == null) {
-            callback?.onError("url 或 type 不能同时为空")
+            callback?.onError(QXBridgeError.invalidParams("url 或 type 不能同时为空"))
             return
         }
         if (launchContext !is Activity) {
@@ -714,7 +745,7 @@ class QXBasePlugin : IBridgePlugin {
         val launch: () -> Unit = launchBlock@{
             try {
                 if (intent.resolveActivity(launchContext.packageManager) == null) {
-                    callback?.onError("当前设备无法打开此 URL")
+                    callback?.onError(QXBridgeError.unsupported("当前设备无法打开此 URL"))
                     return@launchBlock
                 }
                 launchContext.startActivity(intent)
@@ -725,7 +756,7 @@ class QXBasePlugin : IBridgePlugin {
                 })
             } catch (e: Exception) {
                 Log.e(TAG, "打开 URL 失败", e)
-                callback?.onError("打开失败: ${e.message ?: "未知异常"}")
+                callback?.onError(QXBridgeError.failure("打开失败: ${e.message ?: "未知异常"}"))
             }
         }
         if (Looper.myLooper() == Looper.getMainLooper()) {
