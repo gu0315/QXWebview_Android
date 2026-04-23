@@ -351,12 +351,16 @@ class QXBlePlugin : IBridgePlugin {
             })
         } else {
             val hasRequestedBefore = hasRequestedBlePermissions(activity)
-            sendBluetoothPermissionDenied(
-                callback,
-                if (hasRequestedBefore) "蓝牙权限被拒绝，请前往设置开启" else "蓝牙权限未授权，请先授权",
-                getBlePermissions().toList(),
-                isNotDetermined = !hasRequestedBefore
-            )
+            if (hasRequestedBefore) {
+                sendBluetoothPermissionDenied(
+                    callback,
+                    "蓝牙权限被拒绝，请前往设置开启",
+                    getBlePermissions().toList()
+                )
+            } else {
+                requestBlePermissions(activity, callback, initAfterGranted = true)
+                Toast.makeText(activity, "请授予APP蓝牙权限", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
