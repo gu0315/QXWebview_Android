@@ -79,6 +79,8 @@ class QXBlePlugin : IBridgePlugin {
     /** 蓝牙权限状态缓存 */
     private val BLE_PERMISSION_PREFS = "qx_ble_permissions"
     private val KEY_BLE_PERMISSION_REQUESTED = "ble_permission_requested"
+    private val INIT_RETRY_DELAY_MS = 250L
+    private val CONNECT_RETRY_DELAY_MS = 400L
 
 
     /**
@@ -318,12 +320,17 @@ class QXBlePlugin : IBridgePlugin {
         }
     }
 
-    private fun initBle(callback: IBridgeCallback?) {
+    private fun initBle(callback: IBridgeCallback?, allowRetry: Boolean = true) {
         val activity = currentActivity?.get() ?: run {
             sendFailCallback(callback, QXBleErrorCode.PERIPHERAL_NIL, "当前Activity为空")
             return
         }
         if (checkBlePermissions(activity)) {
+            if (ble != null) {
+                sendSuccessCallback(callback, null, "蓝牙已初始化")
+                checkBluetoothEnable(activity)
+                return
+            }
             // 配置蓝牙参数
             val options = Options().apply {
                 logBleEnable = true                    // 开启日志输出，便于调试
@@ -346,7 +353,27 @@ class QXBlePlugin : IBridgePlugin {
                     checkBluetoothEnable(activity)
                 }
                 override fun failed(failedCode: Int) {
-                    sendFailCallback(callback, QXBleErrorCode.UNKNOWN_ERROR, "蓝牙初始化失败: $failedCode")
+                    Log.w(NAME, "蓝牙初始化失败 failedCode=$failedCode, allowRetry=$allowRetry")
+                    if (failedCode == 2001) {
+                        ble = Ble.getInstance()
+                        sendSuccessCallback(callback, null, "蓝牙已初始化")
+                        checkBluetoothEnable(activity)
+                        return
+                    }
+                    if (allowRetry && failedCode != 2005) {
+                        runCatching { ble?.released() }
+                        ble = null
+                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                            initBle(callback, allowRetry = false)
+                        }, INIT_RETRY_DELAY_MS)
+                        return
+                    }
+                    val message = when (failedCode) {
+                        2005 -> "设备不支持BLE"
+                        2007 -> "蓝牙适配器不可用，请确认系统蓝牙已开启"
+                        else -> "蓝牙初始化失败: $failedCode"
+                    }
+                    sendFailCallback(callback, QXBleErrorCode.UNKNOWN_ERROR, message)
                 }
             })
         } else {
@@ -439,48 +466,91 @@ class QXBlePlugin : IBridgePlugin {
     private fun connectBle(params: String, webView: IBridgeWebView?, callback: IBridgeCallback?) {
         val json = JSONObject(params)
         val deviceId = json.getString("deviceId")
-        val device = scannedDevices.firstOrNull { it.bleAddress == deviceId } ?: run {
+        val activity = currentActivity?.get() ?: run {
+            sendFailCallback(callback, QXBleErrorCode.PERIPHERAL_NIL, "当前Activity为空")
+            return
+        }
+        val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
+            sendFailCallback(callback, QXBleErrorCode.NOT_AVAILABLE, "系统蓝牙未开启")
+            checkBluetoothEnable(activity)
+            return
+        }
+
+        val device = scannedDevices.firstOrNull { it.bleAddress == deviceId }
+            ?: ble?.getBleDevice(deviceId)
+            ?: run {
             sendFailCallback(callback, QXBleErrorCode.DEVICE_NOT_FOUND, "未扫描到该设备（MAC：$deviceId）")
             return
         }
 
-        ble?.connect(device, object : BleConnectCallback<BleDevice>() {
-            override fun onServicesDiscovered(device: BleDevice, gatt: BluetoothGatt) {
-                super.onServicesDiscovered(device, gatt)
-            }
-            override fun onConnectionChanged(device: BleDevice) {
-                sendBleEvent(
-                    webView,
-                    QXBLEventType.ON_BLE_CONNECTION_STATE_CHANGE,
-                    JSONObject().apply {
-                        put("isConnected", device.isConnected)
-                        put("deviceId", device.bleAddress)
-                        put("name", device.bleName)
+        val connectedDevice = ble?.connectedDevices?.firstOrNull { it.bleAddress == deviceId }
+        if (connectedDevice?.isConnected == true) {
+            sendSuccessCallback(
+                callback,
+                JSONObject().apply {
+                    put("deviceId", connectedDevice.bleAddress)
+                    put("name", connectedDevice.bleName ?: "未知设备")
+                },
+                "设备已连接"
+            )
+            return
+        }
+
+        ble?.stopScan()
+
+        fun clearStaleConnection(address: String) {
+            runCatching { ble?.disconnect(device) }
+            runCatching { getBluetoothGatt(address)?.close() }
+            runCatching { ble?.refreshDeviceCache(address) }
+        }
+
+        fun doConnect(attempt: Int) {
+            ble?.connect(device, object : BleConnectCallback<BleDevice>() {
+                override fun onServicesDiscovered(device: BleDevice, gatt: BluetoothGatt) {
+                    super.onServicesDiscovered(device, gatt)
+                }
+                override fun onConnectionChanged(device: BleDevice) {
+                    sendBleEvent(
+                        webView,
+                        QXBLEventType.ON_BLE_CONNECTION_STATE_CHANGE,
+                        JSONObject().apply {
+                            put("isConnected", device.isConnected)
+                            put("deviceId", device.bleAddress)
+                            put("name", device.bleName)
+                        }
+                    )
+                }
+
+                override fun onConnectFailed(device: BleDevice, errorCode: Int) {
+                    Log.w(NAME, "连接失败 attempt=$attempt, errorCode=$errorCode, deviceId=${device.bleAddress}")
+                    if (attempt < 2) {
+                        clearStaleConnection(device.bleAddress)
+                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                            doConnect(attempt + 1)
+                        }, CONNECT_RETRY_DELAY_MS)
+                        return
                     }
-                )
-            }
+                    sendFailCallback(callback, QXBleErrorCode.CONNECT_TIMEOUT, "连接失败: $errorCode")
+                }
 
-            override fun onConnectFailed(device: BleDevice, errorCode: Int) {
-                sendFailCallback(callback, QXBleErrorCode.CONNECT_TIMEOUT, "连接失败: $errorCode")
-            }
+                override fun onReady(device: BleDevice) {
+                    super.onReady(device)
+                    sendSuccessCallback(
+                        callback,
+                        JSONObject().apply {
+                            put("deviceId", device.bleAddress)
+                            put("name", device.bleName ?: "未知设备")
+                        },
+                        "设备连接成功"
+                    )
+                    Log.d(NAME, "设备连接成功")
+                }
+            })
+        }
 
-            override fun onReady(device: BleDevice) {
-                super.onReady(device)
-                // 连接成功后自动请求更大的MTU
-                //Log.d(NAME, "开始请求MTU")
-                //requestMtu(device.bleAddress, 98, null)
-                // 返回连接成功结果
-                sendSuccessCallback(
-                    callback,
-                    JSONObject().apply {
-                        put("deviceId", device.bleAddress)
-                        put("name", device.bleName ?: "未知设备")
-                    },
-                    "设备连接成功"
-                )
-                Log.d(NAME, "设备连接成功")
-            }
-        })
+        clearStaleConnection(deviceId)
+        doConnect(1)
     }
 
     /**
