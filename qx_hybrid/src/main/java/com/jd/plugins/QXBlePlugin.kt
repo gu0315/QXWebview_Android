@@ -15,6 +15,7 @@ import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import cn.com.heaton.blelibrary.ble.Ble
 import cn.com.heaton.blelibrary.ble.BleRequestImpl
 import cn.com.heaton.blelibrary.ble.Options
@@ -39,8 +40,6 @@ import com.jd.plugins.utils.BleDataParser
 import org.json.JSONArray
 import org.json.JSONObject
 import java.lang.ref.WeakReference
-import java.nio.charset.StandardCharsets
-import java.util.Locale
 import java.util.UUID
 
 /**
@@ -659,6 +658,7 @@ class QXBlePlugin : IBridgePlugin {
                 UUID.fromString(parsedData.serviceId),
                 UUID.fromString(parsedData.characteristicId),
                 object : BleWriteCallback<BleDevice>() {
+
                     override fun onWriteSuccess(device: BleDevice, characteristic: BluetoothGattCharacteristic) {
                         Log.w(NAME, "写入成功")
                         sendSuccessCallback(
@@ -674,6 +674,7 @@ class QXBlePlugin : IBridgePlugin {
                     }
 
                     override fun onWriteFailed(device: BleDevice, failedCode: Int) {
+                        super.onWriteFailed(device, failedCode)
                         Log.w(NAME, "写入失败，错误码：$failedCode")
                         sendFailCallback(
                             callback,
@@ -1079,9 +1080,9 @@ class QXBlePlugin : IBridgePlugin {
 
     private fun markBlePermissionsRequested(activity: Activity) {
         activity.getSharedPreferences(BLE_PERMISSION_PREFS, Activity.MODE_PRIVATE)
-            .edit()
-            .putBoolean(KEY_BLE_PERMISSION_REQUESTED, true)
-            .apply()
+            .edit(commit = false) {
+                putBoolean(KEY_BLE_PERMISSION_REQUESTED, true)
+            }
     }
 
     private fun requestBlePermissions(
