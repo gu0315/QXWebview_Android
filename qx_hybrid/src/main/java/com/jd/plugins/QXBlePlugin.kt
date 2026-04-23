@@ -3,6 +3,7 @@ import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCharacteristic
+import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothGattService
 import android.bluetooth.le.ScanFilter
 import android.content.Intent
@@ -693,7 +694,6 @@ class QXBlePlugin : IBridgePlugin {
         }
     }
 
-
     private fun notifyBLECharacteristicValueChange(params: String, callback: IBridgeCallback?, webView: IBridgeWebView?) {
         try {
             val jsonParams = JSONObject(params)
@@ -701,21 +701,85 @@ class QXBlePlugin : IBridgePlugin {
             val serviceUUID = jsonParams.getString("serviceId")
             val characteristicUUID = jsonParams.getString("characteristicId")
             val enable = jsonParams.getBoolean("enable")
+            val gattEnable = jsonParams.optBoolean("gatt", true)
+
             // 验证设备连接状态
             val device = ble?.connectedDevices?.find { it.bleAddress == deviceMac } ?: run {
                 sendFailCallback(callback, QXBleErrorCode.DEVICE_NOT_FOUND, "设备未连接")
                 return
             }
-            // TODO 启用或关闭通知 00002902-0000-1000-8000-00805f9b34fb
-            // 注册通知回调监听
+
+            // 启用或关闭 GATT 层通知（失败仅打印日志，不阻断后续流程）
+            if (gattEnable) {
+                runCatching {
+                    val bleClass = Ble::class.java
+                    val bleRequestImplField = bleClass.getDeclaredField("bleRequestImpl").apply { isAccessible = true }
+                    val bleRequestImpl = bleRequestImplField.get(ble) as? BleRequestImpl<*>
+                        ?: error("反射获取BleRequestImpl失败")
+
+                    val gatt = bleRequestImpl.getBluetoothGatt(deviceMac)
+                        ?: error("Gatt实例为空")
+
+                    val service = gatt.getService(UUID.fromString(serviceUUID))
+                        ?: error("未找到服务: $serviceUUID")
+
+                    val characteristic = service.getCharacteristic(UUID.fromString(characteristicUUID))
+                        ?: error("未找到特征: $characteristicUUID")
+
+                    val activity = currentActivity?.get()
+                        ?: error("当前Activity为空")
+
+                    if (ActivityCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                        error("缺少BLUETOOTH_CONNECT权限")
+                    }
+
+                    if (!gatt.setCharacteristicNotification(characteristic, enable)) {
+                        error("启用本地通知失败")
+                    }
+
+                    val descriptor = characteristic.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"))
+                        ?: error("未找到CC'D描述符")
+
+                    val value = when {
+                        !enable -> BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
+                        (characteristic.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0 ->
+                            BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                        (characteristic.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE) != 0 ->
+                            BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
+                        else -> error("特征不支持通知或指示")
+                    }
+                    descriptor.value = value
+                    if (gatt.writeDescriptor(descriptor)) {
+                        sendSuccessCallback(callback, JSONObject().apply {
+                            put("deviceId", deviceMac)
+                            put("serviceId", serviceUUID)
+                            put("characteristicId", characteristicUUID)
+                            put("enabled", enable)
+                        }, "CC'D描述符写入请求已发送")
+                        Log.d(NAME, "CC'D描述符写入请求已发送: enable=$enable")
+                    } else {
+                        sendFailCallback(callback, QXBleErrorCode.SYSTEM_ERROR, "CC'D描述符写入失败")
+                        error("CC'D描述符写入失败")
+                    }
+                }.onFailure { e ->
+                    Log.w(NAME, "gattEnable 处理失败（将继续注册通知回调）: ${e.message}")
+                    sendFailCallback(callback, QXBleErrorCode.SYSTEM_ERROR, "CC'D描述符写入失败")
+                }
+            }
+            // 注册通知回调监听（无论 gattEnable 是否成功均执行）
             ble?.enableNotifyByUuid(device, enable, UUID.fromString(serviceUUID), UUID.fromString(characteristicUUID), bleNotifyCallback(webView))
+            sendSuccessCallback(callback, JSONObject().apply {
+                put("deviceId", deviceMac)
+                put("serviceId", serviceUUID)
+                put("characteristicId", characteristicUUID)
+                put("enabled", enable)
+            }, if (enable) "通知已启用" else "通知已关闭")
+
         } catch (e: Exception) {
             sendFailCallback(callback, QXBleErrorCode.UNKNOWN_ERROR, "解析参数/调用方法异常：${e.message ?: "未知错误"}")
             e.printStackTrace()
         }
     }
-
-
 
 
     /**
