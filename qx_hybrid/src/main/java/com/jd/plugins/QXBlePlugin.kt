@@ -76,6 +76,10 @@ class QXBlePlugin : IBridgePlugin {
     /** 蓝牙开启请求码 */
     private val REQUEST_ENABLE_BT = 0x101
 
+    /** 蓝牙权限状态缓存 */
+    private val BLE_PERMISSION_PREFS = "qx_ble_permissions"
+    private val KEY_BLE_PERMISSION_REQUESTED = "ble_permission_requested"
+
 
     /**
      * Android-BLE库实例，负责底层蓝牙操作
@@ -285,6 +289,16 @@ class QXBlePlugin : IBridgePlugin {
                 }
                 true
             }
+            // 请求蓝牙权限
+            "requestBluetoothPermission" -> {
+                requestBluetoothPermission(callback)
+                true
+            }
+            // 检查蓝牙权限状态
+            "checkBluetoothPermission" -> {
+                checkBluetoothPermission(callback)
+                true
+            }
             // 关闭蓝牙适配器
             "closeBluetoothAdapter" -> {
                 closeBluetoothAdapter(callback)
@@ -336,8 +350,13 @@ class QXBlePlugin : IBridgePlugin {
                 }
             })
         } else {
-            requestBlePermissions(activity, callback)
-            Toast.makeText(activity, "请授予APP蓝牙权限", Toast.LENGTH_SHORT).show()
+            val hasRequestedBefore = hasRequestedBlePermissions(activity)
+            sendBluetoothPermissionDenied(
+                callback,
+                if (hasRequestedBefore) "蓝牙权限被拒绝，请前往设置开启" else "蓝牙权限未授权，请先授权",
+                getBlePermissions().toList(),
+                isNotDetermined = !hasRequestedBefore
+            )
         }
     }
 
@@ -798,7 +817,12 @@ class QXBlePlugin : IBridgePlugin {
                         ContextCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH_ADMIN) == PackageManager.PERMISSION_GRANTED
             }
             if (!hasPermissions) {
-                sendFailCallback(callback, QXBleErrorCode.SYSTEM_ERROR, "蓝牙权限未授权")
+                sendBluetoothPermissionDenied(
+                    callback,
+                    "蓝牙权限未授权，请先授权",
+                    getBlePermissions().toList(),
+                    isNotDetermined = true
+                )
                 return
             }
             // 获取蓝牙状态
@@ -887,6 +911,79 @@ class QXBlePlugin : IBridgePlugin {
         }
     }
 
+    private fun checkBluetoothPermission(callback: IBridgeCallback?) {
+        val activity = currentActivity?.get() ?: run {
+            sendFailCallback(callback, QXBleErrorCode.PERIPHERAL_NIL, "当前Activity为空")
+            return
+        }
+
+        val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+        val requiredPermissions = getBlePermissions()
+        val grantedPermissions = requiredPermissions.filter {
+            ContextCompat.checkSelfPermission(activity, it) == PackageManager.PERMISSION_GRANTED
+        }
+        val deniedPermissions = requiredPermissions.filterNot(grantedPermissions::contains)
+        val hasPermissions = deniedPermissions.isEmpty()
+        val hasRequestedBefore = hasRequestedBlePermissions(activity)
+
+        val authorization = when {
+            hasPermissions -> 1
+            hasRequestedBefore -> 2
+            else -> 0
+        }
+        val authorizationDesc = when (authorization) {
+            1 -> "authorized"
+            2 -> "denied"
+            else -> "notDetermined"
+        }
+
+        val permissionData = JSONObject().apply {
+            put("authorization", authorization)
+            put("authorizationDesc", authorizationDesc)
+            put("isAuthorized", hasPermissions)
+            put("isDenied", !hasPermissions && hasRequestedBefore)
+            put("isNotDetermined", !hasPermissions && !hasRequestedBefore)
+            put("isSupported", bluetoothAdapter != null)
+            put("grantedPermissions", JSONArray(grantedPermissions))
+            put("deniedPermissions", JSONArray(deniedPermissions))
+        }
+
+        sendSuccessCallback(callback, permissionData, "权限检查完成")
+    }
+
+    private fun sendBluetoothPermissionDenied(
+        callback: IBridgeCallback?,
+        message: String,
+        deniedPermissions: List<String> = emptyList(),
+        isNotDetermined: Boolean = false
+    ) {
+        callback?.onError(
+            QXBridgeError.noPermission(
+                message,
+                mapOf(
+                    "deniedPermissions" to deniedPermissions,
+                    "isAuthorized" to false,
+                    "isDenied" to !isNotDetermined,
+                    "isNotDetermined" to isNotDetermined
+                )
+            )
+        )
+    }
+
+    private fun requestBluetoothPermission(callback: IBridgeCallback?) {
+        val activity = currentActivity?.get() ?: run {
+            sendFailCallback(callback, QXBleErrorCode.PERIPHERAL_NIL, "当前Activity为空")
+            return
+        }
+
+        if (checkBlePermissions(activity)) {
+            sendSuccessCallback(callback, null, "蓝牙权限已授权")
+            return
+        }
+
+        requestBlePermissions(activity, callback, initAfterGranted = false)
+    }
+
     fun getBlePermissions(): Array<String> {
         val permissions = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -907,7 +1004,23 @@ class QXBlePlugin : IBridgePlugin {
         }
     }
 
-    private fun requestBlePermissions(activity: Activity, callback: IBridgeCallback?) {
+    private fun hasRequestedBlePermissions(activity: Activity): Boolean {
+        return activity.getSharedPreferences(BLE_PERMISSION_PREFS, Activity.MODE_PRIVATE)
+            .getBoolean(KEY_BLE_PERMISSION_REQUESTED, false)
+    }
+
+    private fun markBlePermissionsRequested(activity: Activity) {
+        activity.getSharedPreferences(BLE_PERMISSION_PREFS, Activity.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_BLE_PERMISSION_REQUESTED, true)
+            .apply()
+    }
+
+    private fun requestBlePermissions(
+        activity: Activity,
+        callback: IBridgeCallback?,
+        initAfterGranted: Boolean = true
+    ) {
         ClosureRegistry.register("onRequestPermissionsResult", object : IBridgeCallback {
             override fun onSuccess(result: Any?) {
                 try {
@@ -925,9 +1038,13 @@ class QXBlePlugin : IBridgePlugin {
                     }
                     if (deniedPermissions.isNotEmpty()) {
                         Toast.makeText(activity, "蓝牙权限被拒绝", Toast.LENGTH_SHORT).show()
-                        sendFailCallback(callback, QXBleErrorCode.PERMISSION_DENIED, "蓝牙权限被拒绝")
+                        sendBluetoothPermissionDenied(callback, "蓝牙权限被拒绝", deniedPermissions)
                     } else {
-                        initBle(callback)
+                        if (initAfterGranted) {
+                            initBle(callback)
+                        } else {
+                            sendSuccessCallback(callback, null, "蓝牙权限已授权")
+                        }
                     }
                 } catch (e: Exception) {
                     sendFailCallback(callback, QXBleErrorCode.UNKNOWN_ERROR, "权限回调解析失败: ${e.message}")
@@ -939,6 +1056,7 @@ class QXBlePlugin : IBridgePlugin {
         })
 
         val permissions = getBlePermissions()
+        markBlePermissionsRequested(activity)
         ActivityCompat.requestPermissions(activity, permissions, REQUEST_CODE_BLE_PERMISSIONS)
     }
 

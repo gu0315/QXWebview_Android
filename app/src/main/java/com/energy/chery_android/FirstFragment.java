@@ -51,7 +51,7 @@ public class FirstFragment extends Fragment {
             BridgeHostManager.init();
             // 启动 WebView Activity
             Intent intent = new Intent(requireContext(), QXWebViewActivity.class);
-            intent.putExtra(QXWebViewActivity.EXTRA_URL, "http://192.168.31.137:3000/");
+            intent.putExtra(QXWebViewActivity.EXTRA_URL, "http://192.168.31.137:5173/");
             startActivity(intent);
         });
         
