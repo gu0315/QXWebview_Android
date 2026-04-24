@@ -710,7 +710,7 @@ class QXBlePlugin : IBridgePlugin {
             }
 
             val targetDevice = ble?.connectedDevices?.find { it.bleAddress == parsedData.deviceId } ?: run {
-                sendFailCallback(callback, QXBleErrorCode.DEVICE_NOT_FOUND, "设备未连接（deviceId=${parsedData.deviceId}）")
+                sendFailCallback(callback, QXBleErrorCode.NO_CONNECTION, "当前连接已断开")
                 return
             }
 
@@ -748,7 +748,7 @@ class QXBlePlugin : IBridgePlugin {
                         Log.w(NAME, "写入失败，错误码：$failedCode")
                         sendFailCallback(
                             callback,
-                            QXBleErrorCode.WRITE_NOT_SUPPORTED,
+                            QXBleErrorCode.SYSTEM_ERROR,
                             "数据发送失败: 错误码=$failedCode"
                         )
                     }
