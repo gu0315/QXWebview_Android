@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>QX Bridge 测试页</title>
+  <script src="./JDBridge.js"></script>
+  <style>
+    :root {
+      --bg: #f4efe7;
+      --panel: rgba(255, 255, 255, 0.92);
+      --ink: #1f2a37;
+      --muted: #667085;
+      --line: rgba(31, 42, 55, 0.12);
+      --primary: #0f766e;
+      --primary-2: #f59e0b;
+      --danger: #dc2626;
+      --shadow: 0 20px 50px rgba(15, 23, 42, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "PingFang SC", "Helvetica Neue", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(245, 158, 11, 0.26), transparent 32%),
+        radial-gradient(circle at top right, rgba(15, 118, 110, 0.22), transparent 28%),
+        linear-gradient(180deg, #fbf7f2 0%, var(--bg) 100%);
+    }
+
+    .page {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 24px 16px 40px;
+    }
+
+    .hero {
+      padding: 24px;
+      border-radius: 28px;
+      background: linear-gradient(135deg, rgba(15, 118, 110, 0.94), rgba(12, 74, 110, 0.92));
+      color: #fff;
+      box-shadow: var(--shadow);
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.15;
+    }
+
+    .hero p {
+      margin: 12px 0 0;
+      line-height: 1.6;
+      color: rgba(255, 255, 255, 0.88);
+    }
+
+    .section {
+      margin-top: 18px;
+      padding: 20px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+
+    .section h2 {
+      margin: 0 0 14px;
+      font-size: 18px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: 18px;
+      padding: 14px 16px;
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--primary), #155e75);
+      box-shadow: 0 12px 24px rgba(15, 118, 110, 0.18);
+    }
+
+    button.alt {
+      background: linear-gradient(135deg, var(--primary-2), #ea580c);
+      box-shadow: 0 12px 24px rgba(245, 158, 11, 0.2);
+    }
+
+    button.danger {
+      background: linear-gradient(135deg, var(--danger), #b91c1c);
+      box-shadow: 0 12px 24px rgba(220, 38, 38, 0.18);
+    }
+
+    .status {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .pill {
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(15, 118, 110, 0.08);
+    }
+
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border-radius: 18px;
+      padding: 16px;
+      min-height: 180px;
+      background: #101828;
+      color: #d1fae5;
+      font-size: 13px;
+      line-height: 1.55;
+      overflow: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <h1>QX Bridge 测试页</h1>
+      <p>这个静态 H5 用来直接验证 Native Bridge。下面的按钮会分别调用扫码、定位、设备信息和宿主支付能力。</p>
+    </section>
+
+    <section class="section">
+      <h2>原生能力</h2>
+      <div class="grid">
+        <button onclick="scanQRCode()">扫码</button>
+        <button onclick="getLocation()">定位</button>
+        <button onclick="getDeviceInfo()">设备信息</button>
+        <button class="alt" onclick="openPayment()">打开支付</button>
+        <button class="danger" onclick="clearLog()">清空日志</button>
+      </div>
+      <div class="status">
+        <div class="pill" id="bridgeState">Bridge 检查中...</div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>调用结果</h2>
+      <pre id="log"></pre>
+    </section>
+  </div>
+
+  <script>
+    const logView = document.getElementById('log');
+    const bridgeState = document.getElementById('bridgeState');
+
+    function writeLog(title, payload) {
+      const time = new Date().toLocaleTimeString();
+      const serialized = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
+      logView.textContent = `[${time}] ${title}\n${serialized}\n\n` + logView.textContent;
+    }
+
+    function clearLog() {
+      logView.textContent = '';
+    }
+
+    function bridgeReady() {
+      return typeof window.JDBridge !== 'undefined' && typeof JDBridge.callNative === 'function';
+    }
+
+    function updateBridgeState() {
+      bridgeState.textContent = bridgeReady() ? 'Bridge 已就绪' : 'Bridge 未就绪';
+    }
+
+    function callNative(plugin, action, params) {
+      return new Promise((resolve, reject) => {
+        if (!bridgeReady()) {
+          reject(new Error('JDBridge 不可用'));
+          return;
+        }
+        JDBridge.callNative(plugin, {
+          action,
+          params: params || {},
+          success: (res) => resolve(res || {}),
+          error: (err) => reject(err || { message: `${plugin}.${action} 调用失败` })
+        });
+      });
+    }
+
+    async function runAction(title, task) {
+      try {
+        const result = await task();
+        writeLog(`${title} 成功`, result);
+      } catch (error) {
+        writeLog(`${title} 失败`, error);
+      }
+    }
+
+    function scanQRCode() {
+      runAction('扫码', () => callNative('QXBasePlugin', 'scanQRCode', {}));
+    }
+
+    function getLocation() {
+      runAction('定位', () => callNative('QXBasePlugin', 'location', {}));
+    }
+
+    function getDeviceInfo() {
+      runAction('设备信息', () => callNative('QXBasePlugin', 'getDeviceInfo', {}));
+    }
+
+    function openPayment() {
+      runAction('打开支付', () => callNative('QXHostBridgePlugin', 'openPage', {
+        url: 'app://pay',
+        params: {
+          amount: '88.88',
+          orderId: `H5_ORDER_${Date.now()}`
+        }
+      }));
+    }
+
+    window.addEventListener('JDBridgeReady', updateBridgeState);
+    updateBridgeState();
+    writeLog('页面已加载', { userAgent: navigator.userAgent });
+  </script>
+</body>
+</html>

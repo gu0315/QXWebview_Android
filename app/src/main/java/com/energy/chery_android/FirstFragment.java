@@ -2,31 +2,20 @@ package com.energy.chery_android;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
-import androidx.fragment.app.Fragment;
 import androidx.navigation.fragment.NavHostFragment;
+import androidx.fragment.app.Fragment;
 
 import com.energy.chery_android.databinding.FragmentFirstBinding;
 import com.jd.hybrid.QXWebViewActivity;
 
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.json.JSONException;
-import org.json.JSONObject;
-
-import java.util.HashMap;
-import java.util.Map;
-
-import kotlin.Unit;
-import kotlin.jvm.functions.Function1;
-
 public class FirstFragment extends Fragment {
+
+    private static final String BRIDGE_TEST_URL = "file:///android_asset/bridge_test.html";
 
     private FragmentFirstBinding binding;
 
@@ -54,129 +43,13 @@ public class FirstFragment extends Fragment {
             intent.putExtra(QXWebViewActivity.EXTRA_URL, "http://192.168.31.137:5173/");
             startActivity(intent);
         });
-        
-        // 测试支付按钮
-        binding.buttonPayment.setOnClickListener(v -> testPayment());
-    }
-    
-    /**
-     * 从 WebView 启动支付页面
-     */
-    private void startPaymentFromWebView(@Nullable Map<?, ?> params, @NotNull Function1<@Nullable Object, @NotNull Unit> completion) {
-        Log.d("FirstFragment", "Starting payment from WebView");
-        
-        // 从参数中提取支付信息
-        String amount = "99.99"; // 默认金额
-        String orderId = "ORDER_" + System.currentTimeMillis();
-        if (params != null) {
-            Object amountObj = params.get("amount");
-            Object orderIdObj = params.get("orderId");
-            if (amountObj != null) {
-                amount = amountObj.toString();
-            }
-            if (orderIdObj != null) {
-                orderId = orderIdObj.toString();
-            }
-        }
-        
-        Log.d("FirstFragment", "Payment info - amount: " + amount + ", orderId: " + orderId);
-        
-        // 使用 ClosureRegistry 存储回调（像扫码一样）
-        String callbackId = "payment_" + System.currentTimeMillis();
-        
-        // 将 Function1 包装成 IBridgeCallback
-        com.jd.jdbridge.base.IBridgeCallback bridgeCallback = new com.jd.jdbridge.base.IBridgeCallback() {
-            @Override
-            public void onSuccess(@org.jetbrains.annotations.Nullable Object result) {
-                Log.d("FirstFragment", "Payment callback onSuccess: " + result);
-                try {
-                    JSONObject jsonResult;
-                    if (result instanceof String) {
-                        jsonResult = new JSONObject((String) result);
-                    } else if (result instanceof JSONObject) {
-                        jsonResult = (JSONObject) result;
-                    } else {
-                        jsonResult = new JSONObject();
-                    }
-                    completion.invoke(jsonResult);
-                } catch (JSONException e) {
-                    Log.e("FirstFragment", "Error parsing payment result", e);
-                    completion.invoke(null);
-                }
-            }
-            
-            @Override
-            public void onError(@org.jetbrains.annotations.Nullable String error) {
-                Log.d("FirstFragment", "Payment callback onError: " + error);
-                JSONObject errorResult = new JSONObject();
-                try {
-                    errorResult.put("success", false);
-                    errorResult.put("message", error != null ? error : "支付失败");
-                } catch (JSONException ignored) {
-                }
-                completion.invoke(errorResult);
-            }
-        };
-        
-        com.jd.plugins.ClosureRegistry.INSTANCE.register(callbackId, bridgeCallback);
-        
-        // 准备 Intent，传递 callbackId
-        Intent intent = new Intent(requireContext(), PaymentActivity.class);
-        intent.putExtra(PaymentActivity.EXTRA_AMOUNT, amount);
-        intent.putExtra(PaymentActivity.EXTRA_ORDER_ID, orderId);
-        intent.putExtra("callbackId", callbackId);
-        
-        // 必须在主线程启动 Activity
-        requireActivity().runOnUiThread(() -> {
-            Log.d("FirstFragment", "Launching PaymentActivity with callbackId: " + callbackId);
+
+        binding.buttonTest.setOnClickListener(v -> {
+            BridgeHostManager.init();
+            Intent intent = new Intent(requireContext(), QXWebViewActivity.class);
+            intent.putExtra(QXWebViewActivity.EXTRA_URL, BRIDGE_TEST_URL);
             startActivity(intent);
         });
-    }
-    
-    /**
-     * 测试支付功能
-     */
-    private void testPayment() {
-        Log.d("FirstFragment", "Test payment button clicked");
-        
-        // 模拟 WebView 的支付请求
-        Map<String, Object> params = new HashMap<>();
-        params.put("amount", "88.88");
-        params.put("orderId", "TEST_ORDER_" + System.currentTimeMillis());
-        
-        // 创建一个测试回调
-        Function1<Object, Unit> testCompletion = result -> {
-            Log.d("FirstFragment", "Payment test result: " + result);
-            
-            requireActivity().runOnUiThread(() -> {
-                String message;
-                if (result instanceof JSONObject) {
-                    try {
-                        JSONObject json = (JSONObject) result;
-                        boolean success = json.optBoolean("success", false);
-                        String orderId = json.optString("orderId", "");
-                        String transactionId = json.optString("transactionId", "");
-                        
-                        if (success) {
-                            message = "支付成功！\n订单号: " + orderId + "\n交易号: " + transactionId;
-                        } else {
-                            message = "支付失败: " + json.optString("message", "未知错误");
-                        }
-                    } catch (Exception e) {
-                        message = "结果解析失败: " + e.getMessage();
-                    }
-                } else {
-                    message = "收到结果: " + result;
-                }
-                
-                Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show();
-            });
-            
-            return Unit.INSTANCE;
-        };
-        
-        // 调用支付方法
-        startPaymentFromWebView(params, testCompletion);
     }
 
     @Override
