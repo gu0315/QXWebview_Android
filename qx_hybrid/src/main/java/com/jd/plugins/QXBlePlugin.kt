@@ -272,7 +272,7 @@ class QXBlePlugin : IBridgePlugin {
                     try {
                         val json = JSONObject(it)
                         val deviceId = json.getString("deviceId")
-                        val mtu = json.optInt("mtu", 98)
+                        val mtu = json.optInt("mtu", 255)
                         requestMtu(deviceId, mtu, callback)
                     } catch (e: Exception) {
                         callback?.onError(QXBridgeError.invalidParams("参数解析失败: ${e.message}"))
@@ -1286,7 +1286,7 @@ class QXBlePlugin : IBridgePlugin {
      * @param requestedMtu 请求的MTU大小
      * @param callback 回调
      */
-    private fun requestMtu(deviceId: String, requestedMtu: Int = 98, callback: IBridgeCallback?) {
+    private fun requestMtu(deviceId: String, requestedMtu: Int = 255, callback: IBridgeCallback?) {
         try {
             ble?.setMTU(deviceId, requestedMtu, object : cn.com.heaton.blelibrary.ble.callback.BleMtuCallback<BleDevice>() {
                 override fun onMtuChanged(device: BleDevice?, mtu: Int, status: Int) {

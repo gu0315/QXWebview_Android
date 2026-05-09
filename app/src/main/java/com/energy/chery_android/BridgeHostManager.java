@@ -90,16 +90,13 @@ public final class BridgeHostManager {
                     }
                     case "getUserInfo": {
                         List<Map<String, String>> deviceList = new ArrayList<>();
-                        deviceList.add(createDevice("vin1", "mac1"));
-                        deviceList.add(createDevice("vin2", "mac2"));
-                        deviceList.add(createDevice("vin3", "mac3"));
-
+                        deviceList.add(createDevice("E0VATESTV1N000403", "DE772BBD859E"));
                         Map<String, Object> userInfo = new HashMap<>();
-                        userInfo.put("phone", "xxx");
+                        userInfo.put("phone", "15755336837");
                         userInfo.put("list", deviceList);
-                        userInfo.put("userId", "xxx");
+                        userInfo.put("userId", "123456789");
                         userInfo.put("isLogin", true);
-                        userInfo.put("userName", "xxx");
+                        userInfo.put("userName", "EXCEED_1235N");
                         completion.invoke(userInfo);
                         break;
                     }

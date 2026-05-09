@@ -31,16 +31,12 @@ public class FirstFragment extends Fragment {
     public void onViewCreated(@NonNull View view, Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
-        binding.buttonFirst.setOnClickListener(v ->
-                NavHostFragment.findNavController(FirstFragment.this)
-                        .navigate(R.id.action_FirstFragment_to_SecondFragment)
-        );
-
         binding.buttonWebview.setOnClickListener(v -> {
             BridgeHostManager.init();
             // 启动 WebView Activity
             Intent intent = new Intent(requireContext(), QXWebViewActivity.class);
-            intent.putExtra(QXWebViewActivity.EXTRA_URL, "http://192.168.31.137:5173/");
+            intent.putExtra(QXWebViewActivity.EXTRA_URL, "http://192.168.31.137:5174");
+            // https://test-fr-home-charge-web.cheryge.com/#/pages/bluetooth-test/index
             startActivity(intent);
         });
 
