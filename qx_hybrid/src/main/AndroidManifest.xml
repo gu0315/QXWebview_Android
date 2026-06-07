@@ -71,5 +71,23 @@
             android:exported="false"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+
+        <!-- 选图/拍照中转Activity（无 UI，透明） -->
+        <activity
+            android:name="com.jd.plugins.ImagePickerActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:theme="@style/Theme.QX.Translucent" />
+
+        <!-- SDK 自带 FileProvider（拍照临时文件），接入方无需配置 -->
+        <provider
+            android:name="com.jd.plugins.QXFileProvider"
+            android:authorities="${applicationId}.qxfileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/qx_file_paths" />
+        </provider>
     </application>
 </manifest>

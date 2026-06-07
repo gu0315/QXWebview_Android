@@ -133,6 +133,11 @@ class QXBasePlugin : IBridgePlugin {
                 handleOpenUrl(webView, params, callback)
                 return true
             }
+
+            "chooseImage" -> {
+                handleChooseImage(webView, params, callback)
+                return true
+            }
             else -> {
                 return false
             }
@@ -712,6 +717,76 @@ class QXBasePlugin : IBridgePlugin {
                     PageResultCenter.discard(pageId)
                 }
                 callback?.onError(QXBridgeError.failure("打开 WebView 失败: ${e.message ?: "未知异常"}"))
+            }
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            launch()
+        } else {
+            Handler(Looper.getMainLooper()).post(launch)
+        }
+    }
+
+    /**
+     * 选择图片（相册 / 拍照）
+     * H5 调用示例：
+     * const res = await QXBasePlugin.chooseImage({ sourceType: ["album","camera"], maxSize: 1280 })
+     * // res = { count, images: [{ base64, path, width, height, size }] }
+     * // base64 形如 "data:image/jpeg;base64,..."；path 为本地 file:// 路径
+     * // 用户取消时返回 { cancelled: true }
+     */
+    private fun handleChooseImage(
+        webView: IBridgeWebView?,
+        params: String?,
+        callback: IBridgeCallback?
+    ) {
+        val jsonObj = try {
+            JSONObject(params ?: "{}")
+        } catch (e: Exception) {
+            callback?.onError(QXBridgeError.invalidParams("参数解析失败"))
+            return
+        }
+
+        val sources = mutableListOf<String>()
+        jsonObj.optJSONArray("sourceType")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                arr.optString(i).takeIf { it.isNotBlank() }?.let { sources.add(it.lowercase()) }
+            }
+        }
+        if (sources.isEmpty()) {
+            sources.add("album")
+            sources.add("camera")
+        }
+        val maxSize = jsonObj.optInt("maxSize", 1280)
+        val quality = jsonObj.optInt("quality", 80)
+
+        val activity = getActivityFromWebView(webView)
+        val launchContext: Context? = activity ?: context
+        if (launchContext == null) {
+            callback?.onError(QXBridgeError.notFound("获取上下文失败"))
+            return
+        }
+        if (callback == null) return
+
+        val requestId = java.util.UUID.randomUUID().toString()
+        PageResultCenter.suspend(requestId, callback)
+
+        val intent = Intent(launchContext, ImagePickerActivity::class.java).apply {
+            putExtra(ImagePickerActivity.EXTRA_SOURCES, sources.toTypedArray())
+            putExtra(ImagePickerActivity.EXTRA_MAX_SIZE, maxSize)
+            putExtra(ImagePickerActivity.EXTRA_QUALITY, quality)
+            putExtra(ImagePickerActivity.EXTRA_REQUEST_ID, requestId)
+            if (launchContext !is Activity) {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        }
+
+        val launch: () -> Unit = {
+            try {
+                launchContext.startActivity(intent)
+            } catch (e: Exception) {
+                Log.e(TAG, "打开选图失败", e)
+                PageResultCenter.discard(requestId)
+                callback.onError(QXBridgeError.failure("打开选图失败: ${e.message ?: "未知异常"}"))
             }
         }
         if (Looper.myLooper() == Looper.getMainLooper()) {

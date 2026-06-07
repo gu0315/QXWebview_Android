@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 拍照临时文件输出目录（SDK 内部使用） -->
+    <cache-path
+        name="qx_cache"
+        path="." />
+    <external-cache-path
+        name="qx_external_cache"
+        path="." />
+</paths>
