@@ -8,9 +8,7 @@ import com.jd.plugins.QXWebViewHostDelegate;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import kotlin.Unit;
@@ -53,18 +51,8 @@ public final class BridgeHostManager {
                         completion.invoke(result);
                         break;
                     case "app://login":
-                        List<Map<String, String>> deviceList = new ArrayList<>();
-                        deviceList.add(createDevice("vin1", "mac1"));
-                        deviceList.add(createDevice("vin2", "mac2"));
-                        deviceList.add(createDevice("vin3", "mac3"));
-
-                        Map<String, Object> userInfo = new HashMap<>();
-                        userInfo.put("phone", "xxx");
-                        userInfo.put("list", deviceList);
-                        userInfo.put("userId", "xxx");
-                        userInfo.put("isLogin", true);
-                        userInfo.put("userName", "xxx");
-                        completion.invoke(userInfo);
+                        // 返回用户在主界面输入的信息
+                        completion.invoke(UserSession.getInstance().userInfoPayload());
                         break;
                     default:
                         Log.d(TAG, "未处理的 URL: " + url);
@@ -89,15 +77,8 @@ public final class BridgeHostManager {
                         break;
                     }
                     case "getUserInfo": {
-                        List<Map<String, String>> deviceList = new ArrayList<>();
-                        deviceList.add(createDevice("E0VATESTV1N000403", "DE772BBD859E"));
-                        Map<String, Object> userInfo = new HashMap<>();
-                        userInfo.put("phone", "15755336837");
-                        userInfo.put("list", deviceList);
-                        userInfo.put("userId", "123456789");
-                        userInfo.put("isLogin", true);
-                        userInfo.put("userName", "EXCEED_1235N");
-                        completion.invoke(userInfo);
+                        // 返回用户在主界面输入的信息
+                        completion.invoke(UserSession.getInstance().userInfoPayload());
                         break;
                     }
                     default: {
@@ -107,13 +88,6 @@ public final class BridgeHostManager {
                         completion.invoke(error);
                     }
                 }
-            }
-
-            private Map<String, String> createDevice(String vin, String mac) {
-                Map<String, String> device = new HashMap<>();
-                device.put("vin", vin);
-                device.put("mac", mac);
-                return device;
             }
         };
 
