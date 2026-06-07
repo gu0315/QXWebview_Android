@@ -22,6 +22,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.jd.plugins.ClosureRegistry
+import com.jd.plugins.PageResultCenter
 import com.jd.plugins.QXBridgePluginRegister
 import com.jd.plugins.QXHostBridgePlugin
 import org.json.JSONArray
@@ -104,6 +105,13 @@ open class QXWebViewActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        // 取消兜底：本页是"打开并等回传"的子页，用户直接返回（未调 closeWithResult）
+        // 时回传 cancelled，避免打开方的 await 永久挂起。closeWithResult 已消费时此处为 no-op。
+        if (isFinishing) {
+            intent?.getStringExtra(PageResultCenter.EXTRA_PAGE_ID)?.let {
+                PageResultCenter.cancel(it)
+            }
+        }
         QXBridgePluginRegister.unregisterHostBridgePlugin(registeredHostBridgePlugin)
         registeredHostBridgePlugin = null
         super.onDestroy()

@@ -124,6 +124,11 @@ class QXBasePlugin : IBridgePlugin {
                 return true
             }
 
+            "closeWithResult" -> {
+                handleCloseWithResult(webView, params, callback)
+                return true
+            }
+
             "openUrl" -> {
                 handleOpenUrl(webView, params, callback)
                 return true
@@ -617,8 +622,12 @@ class QXBasePlugin : IBridgePlugin {
      *   navHidden: true,                 // 可选，是否隐藏导航栏
      *   immersive: true,                 // 可选，是否沉浸式状态栏
      *   navTitle: "页面标题",            // 可选，原生导航栏标题
-     *   presentStyle: "push"             // iOS 兼容字段，Android 忽略
+     *   presentStyle: "push",            // iOS 兼容字段，Android 忽略
+     *   forResult: true                  // 可选，需要等待新页面回传时传 true，并用 await 接收
      * })
+     * 等待回传示例：
+     * const result = await QXBasePlugin.openWebView({ url: "https://xxx/#/pages/b/index", forResult: true })
+     * // result 为新页面通过 closeWithResult 回传的数据；用户直接返回时为 { cancelled: true }
      */
     private fun handleOpenWebView(
         webView: IBridgeWebView?,
@@ -652,6 +661,8 @@ class QXBasePlugin : IBridgePlugin {
             null
         }
         val navTitle = jsonObj.optString("navTitle").takeIf { it.isNotBlank() }
+        // forResult=true 时挂起本次 callback，等待新页面 closeWithResult 或被返回时回传
+        val forResult = jsonObj.optBoolean("forResult", false)
 
         val activity = getActivityFromWebView(webView)
         val launchContext: Context? = activity ?: context
@@ -660,8 +671,12 @@ class QXBasePlugin : IBridgePlugin {
             return
         }
 
+        val pageId = java.util.UUID.randomUUID().toString()
         val intent = Intent(launchContext, QXWebViewActivity::class.java).apply {
             putExtra(QXWebViewActivity.EXTRA_URL, finalUrl)
+            if (forResult) {
+                putExtra(PageResultCenter.EXTRA_PAGE_ID, pageId)
+            }
             if (immersive != null) {
                 putExtra(QXWebViewActivity.EXTRA_IMMERSIVE, immersive)
             }
@@ -679,14 +694,23 @@ class QXBasePlugin : IBridgePlugin {
 
         val launch: () -> Unit = {
             try {
+                if (forResult && callback != null) {
+                    PageResultCenter.suspend(pageId, callback)
+                }
                 launchContext.startActivity(intent)
-                callback?.onSuccess(JSONObject().apply {
-                    put("code", 0)
-                    put("msg", "打开 WebView 成功")
-                    put("url", finalUrl)
-                })
+                if (!forResult) {
+                    // 非等待回传：立即返回打开成功
+                    callback?.onSuccess(JSONObject().apply {
+                        put("code", 0)
+                        put("msg", "打开 WebView 成功")
+                        put("url", finalUrl)
+                    })
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "打开 WebView 失败", e)
+                if (forResult) {
+                    PageResultCenter.discard(pageId)
+                }
                 callback?.onError(QXBridgeError.failure("打开 WebView 失败: ${e.message ?: "未知异常"}"))
             }
         }
@@ -694,6 +718,39 @@ class QXBasePlugin : IBridgePlugin {
             launch()
         } else {
             Handler(Looper.getMainLooper()).post(launch)
+        }
+    }
+
+    /**
+     * 回传数据并关闭当前 WebView
+     * H5 调用示例（在 B 页面）：
+     * await QXBasePlugin.closeWithResult({ data: { vin: "xxx", mac: "yyy" } })
+     */
+    private fun handleCloseWithResult(
+        webView: IBridgeWebView?,
+        params: String?,
+        callback: IBridgeCallback?
+    ) {
+        val data: Any? = try {
+            JSONObject(params ?: "{}").opt("data")
+        } catch (e: Exception) {
+            null
+        }
+
+        val run: () -> Unit = {
+            val activity = getActivityFromWebView(webView)
+            val pageId = activity?.intent?.getStringExtra(PageResultCenter.EXTRA_PAGE_ID)
+            if (pageId != null) {
+                // 回传给打开方（resolve 会从挂起表移除，onDestroy 兜底将不再触发）
+                PageResultCenter.resolve(pageId, data ?: JSONObject())
+            }
+            activity?.finish()
+            callback?.onSuccess(JSONObject().apply { put("success", true) }) // 给 B 的 ack
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            run()
+        } else {
+            Handler(Looper.getMainLooper()).post(run)
         }
     }
 
