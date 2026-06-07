@@ -61,8 +61,8 @@ open class QXWebViewActivity : AppCompatActivity() {
             }
 
             fun fromJsValue(value: String): NavigationBarStyle? = when (value.trim().lowercase()) {
-                DEFAULT.jsValue -> DEFAULT
-                BLACK.jsValue -> BLACK
+                DEFAULT.jsValue, "light" -> DEFAULT
+                BLACK.jsValue, "dark" -> BLACK
                 else -> null
             }
         }
