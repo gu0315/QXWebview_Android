@@ -45,6 +45,9 @@ class QXBasePlugin : IBridgePlugin {
 
     companion object {
         private const val REQUEST_CODE_CAMERA_PERMISSION = 1001
+        // Web 缓存清理 token 的持久化存储
+        private const val PREFS_WEB_CACHE = "qx_web_cache"
+        private const val KEY_CACHE_TOKEN = "cache_purge_token"
     }
 
     /**
@@ -136,6 +139,11 @@ class QXBasePlugin : IBridgePlugin {
 
             "chooseImage" -> {
                 handleChooseImage(webView, params, callback)
+                return true
+            }
+
+            "setWebCacheToken" -> {
+                handleSetWebCacheToken(webView, params, callback)
                 return true
             }
             else -> {
@@ -793,6 +801,71 @@ class QXBasePlugin : IBridgePlugin {
             launch()
         } else {
             Handler(Looper.getMainLooper()).post(launch)
+        }
+    }
+
+    /**
+     * 设置 Web 缓存 token（H5 控制清缓存，与 iOS 协议一致）
+     * H5 调用示例（建议放在 App 入口 onLaunch / 首屏初始化处）：
+     * QXBasePlugin.setWebCacheToken({ token: "2026-06-08" })
+     * // token 变化时清一次 WebView HTTP 缓存（clearCache 不动 cookie / localStorage，不掉登录）；不变则跳过、零开销。
+     * // 需要让所有设备强制清一次缓存时（如线上缓存异常），H5 部署时改这个 token 即可，无需 App 发版。
+     * // 返回: { code, msg, cleared, token } —— cleared 表示本次是否真的清了缓存。
+     */
+    private fun handleSetWebCacheToken(
+        webView: IBridgeWebView?,
+        params: String?,
+        callback: IBridgeCallback?
+    ) {
+        val token = try {
+            JSONObject(params ?: "{}").optString("token").trim()
+        } catch (e: Exception) {
+            ""
+        }
+        if (token.isEmpty()) {
+            callback?.onError(QXBridgeError.invalidParams("token 不能为空"))
+            return
+        }
+
+        val ctx = context ?: webView?.view?.context
+        if (ctx == null) {
+            callback?.onError(QXBridgeError.notFound("获取上下文失败"))
+            return
+        }
+        val prefs = ctx.getSharedPreferences(PREFS_WEB_CACHE, Context.MODE_PRIVATE)
+        // token 未变化：跳过，不清缓存
+        if (prefs.getString(KEY_CACHE_TOKEN, null) == token) {
+            callback?.onSuccess(JSONObject().apply {
+                put("code", 0)
+                put("msg", "token 未变化，已跳过")
+                put("cleared", false)
+                put("token", token)
+            })
+            return
+        }
+
+        val targetWebView = webView?.view as? android.webkit.WebView
+        if (targetWebView == null) {
+            callback?.onError(QXBridgeError.notFound("获取WebView失败"))
+            return
+        }
+
+        val clear: () -> Unit = {
+            // clearCache(true) 只清 HTTP 资源缓存（含磁盘），不动 cookie / localStorage（不掉登录）
+            targetWebView.clearCache(true)
+            prefs.edit().putString(KEY_CACHE_TOKEN, token).apply()
+            callback?.onSuccess(JSONObject().apply {
+                put("code", 0)
+                put("msg", "缓存已清理")
+                put("cleared", true)
+                put("token", token)
+            })
+        }
+        // clearCache 需在 WebView 所在线程（主线程）执行
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            clear()
+        } else {
+            Handler(Looper.getMainLooper()).post(clear)
         }
     }
 
