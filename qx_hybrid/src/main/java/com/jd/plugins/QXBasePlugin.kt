@@ -48,6 +48,8 @@ class QXBasePlugin : IBridgePlugin {
         // Web 缓存清理 token 的持久化存储
         private const val PREFS_WEB_CACHE = "qx_web_cache"
         private const val KEY_CACHE_TOKEN = "cache_purge_token"
+        // H5 通过 Bridge 使用的原生 KV 存储命名空间(与 PREFS_WEB_CACHE 隔离)
+        private const val PREFS_BRIDGE_STORAGE = "qx_bridge_storage"
     }
 
     /**
@@ -146,11 +148,178 @@ class QXBasePlugin : IBridgePlugin {
                 handleSetWebCacheToken(webView, params, callback)
                 return true
             }
+
+            "setStorage" -> {
+                handleSetStorage(webView, params, callback)
+                return true
+            }
+
+            "getStorage" -> {
+                handleGetStorage(webView, params, callback)
+                return true
+            }
+
+            "removeStorage" -> {
+                handleRemoveStorage(webView, params, callback)
+                return true
+            }
+
+            "clearStorage" -> {
+                handleClearStorage(webView, callback)
+                return true
+            }
             else -> {
                 return false
             }
         }
     }
+
+    // region 原生 KV 存储(替代易丢失的 localStorage)
+
+    /**
+     * 解析 H5 传入的 JSON,取 key(非空字符串)。
+     */
+    private fun extractStorageKey(params: String?, callback: IBridgeCallback?): String? {
+        val key = try {
+            JSONObject(params ?: "{}").optString("key").trim()
+        } catch (e: Exception) {
+            ""
+        }
+        if (key.isEmpty()) {
+            callback?.onError(QXBridgeError.invalidParams("key 不能为空"))
+            return null
+        }
+        return key
+    }
+
+    /**
+     * 获取 Bridge 存储用的 SharedPreferences。
+     */
+    private fun bridgeStorage(webView: IBridgeWebView?): android.content.SharedPreferences? {
+        val ctx = context ?: webView?.view?.context ?: return null
+        return ctx.getSharedPreferences(PREFS_BRIDGE_STORAGE, Context.MODE_PRIVATE)
+    }
+
+    /**
+     * H5 调用:QXBasePlugin.setStorage({ key: "token", value: "xxx" })
+     * value 支持 String / Number / Bool / Array / Dictionary。
+     * 对象和数组会以 JSON 字符串落盘,getStorage 时还原成相同结构。
+     */
+    private fun handleSetStorage(
+        webView: IBridgeWebView?,
+        params: String?,
+        callback: IBridgeCallback?
+    ) {
+        val key = extractStorageKey(params, callback) ?: return
+        val prefs = bridgeStorage(webView) ?: run {
+            callback?.onError(QXBridgeError.notFound("获取上下文失败"))
+            return
+        }
+        val json = try { JSONObject(params ?: "{}") } catch (e: Exception) { JSONObject() }
+        val raw = json.opt("value")
+        val editor = prefs.edit()
+        when {
+            raw == null || raw == JSONObject.NULL -> editor.remove(key)
+            raw is Boolean -> editor.putBoolean(key, raw)
+            raw is Int -> editor.putLong(key, raw.toLong())
+            raw is Long -> editor.putLong(key, raw)
+            raw is Float -> editor.putFloat(key, raw)
+            raw is Double -> editor.putString(key, raw.toString())
+            raw is String -> editor.putString(key, raw)
+            else -> editor.putString(key, raw.toString()) // JSONObject / JSONArray 走原生 toString
+        }
+        editor.apply()
+        callback?.onSuccess(JSONObject().apply {
+            put("code", 0)
+            put("msg", "ok")
+            put("key", key)
+        })
+    }
+
+    /**
+     * H5 调用:const res = await QXBasePlugin.getStorage({ key: "token" })
+     * 返回:{ code, key, value }。key 不存在时 value 为 null。
+     */
+    private fun handleGetStorage(
+        webView: IBridgeWebView?,
+        params: String?,
+        callback: IBridgeCallback?
+    ) {
+        val key = extractStorageKey(params, callback) ?: return
+        val prefs = bridgeStorage(webView) ?: run {
+            callback?.onError(QXBridgeError.notFound("获取上下文失败"))
+            return
+        }
+        val raw: Any? = prefs.all[key]
+        val value: Any = when (raw) {
+            null -> JSONObject.NULL
+            is String -> tryParseJson(raw) ?: raw
+            else -> raw
+        }
+        callback?.onSuccess(JSONObject().apply {
+            put("code", 0)
+            put("key", key)
+            put("value", value)
+        })
+    }
+
+    /**
+     * 字符串若是合法 JSON 对象/数组,反序列化;否则按字符串原样返回。
+     */
+    private fun tryParseJson(text: String): Any? {
+        val trimmed = text.trimStart()
+        return try {
+            when {
+                trimmed.startsWith("{") -> JSONObject(text)
+                trimmed.startsWith("[") -> JSONArray(text)
+                else -> null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * H5 调用:QXBasePlugin.removeStorage({ key: "token" })
+     */
+    private fun handleRemoveStorage(
+        webView: IBridgeWebView?,
+        params: String?,
+        callback: IBridgeCallback?
+    ) {
+        val key = extractStorageKey(params, callback) ?: return
+        val prefs = bridgeStorage(webView) ?: run {
+            callback?.onError(QXBridgeError.notFound("获取上下文失败"))
+            return
+        }
+        prefs.edit().remove(key).apply()
+        callback?.onSuccess(JSONObject().apply {
+            put("code", 0)
+            put("msg", "ok")
+            put("key", key)
+        })
+    }
+
+    /**
+     * H5 调用:QXBasePlugin.clearStorage()
+     * 仅清空 Bridge 自有命名空间(qx_bridge_storage),不影响 App 其它 SharedPreferences。
+     */
+    private fun handleClearStorage(
+        webView: IBridgeWebView?,
+        callback: IBridgeCallback?
+    ) {
+        val prefs = bridgeStorage(webView) ?: run {
+            callback?.onError(QXBridgeError.notFound("获取上下文失败"))
+            return
+        }
+        prefs.edit().clear().apply()
+        callback?.onSuccess(JSONObject().apply {
+            put("code", 0)
+            put("msg", "ok")
+        })
+    }
+
+    // endregion
 
     /**
      * 获取设备信息
