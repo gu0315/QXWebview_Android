@@ -79,6 +79,7 @@ open class QXWebViewActivity : AppCompatActivity() {
         private const val NAV_BAR_HEIGHT_DP = 48
         private const val STATUS_BAR_DEFAULT_DP = 24
         private const val INITIAL_LOADING_TIMEOUT_MS = 10000L
+        private const val INITIAL_LOADING_PAGE_FINISH_FALLBACK_MS = 3000L
 
         const val EXTRA_URL = "extra_url"
         const val EXTRA_IMMERSIVE = "extra_immersive"
@@ -95,6 +96,7 @@ open class QXWebViewActivity : AppCompatActivity() {
     private var initialLoadingView: View? = null
     private val initialLoadingHandler = Handler(Looper.getMainLooper())
     private val initialLoadingTimeoutRunnable = Runnable { hideInitialLoading() }
+    private val initialLoadingPageFinishRunnable = Runnable { hideInitialLoading() }
 
     private var isImmersive = false
     private var isNavBarVisible = false
@@ -148,6 +150,7 @@ open class QXWebViewActivity : AppCompatActivity() {
         registeredHostBridgePlugin = null
         QXLifecyclePlugin.clear(webView)
         initialLoadingHandler.removeCallbacks(initialLoadingTimeoutRunnable)
+        initialLoadingHandler.removeCallbacks(initialLoadingPageFinishRunnable)
         super.onDestroy()
     }
 
@@ -207,12 +210,11 @@ open class QXWebViewActivity : AppCompatActivity() {
 
             override fun onPageCommitVisible(view: WebView?, url: String?) {
                 super.onPageCommitVisible(view, url)
-                hideInitialLoading()
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                hideInitialLoading()
+                scheduleInitialLoadingPageFinishFallback()
             }
         }
     }
@@ -321,6 +323,7 @@ open class QXWebViewActivity : AppCompatActivity() {
 
     fun showInitialLoading() {
         initialLoadingHandler.removeCallbacks(initialLoadingTimeoutRunnable)
+        initialLoadingHandler.removeCallbacks(initialLoadingPageFinishRunnable)
         initialLoadingView?.apply {
             visibility = View.VISIBLE
             bringToFront()
@@ -331,7 +334,16 @@ open class QXWebViewActivity : AppCompatActivity() {
 
     fun hideInitialLoading() {
         initialLoadingHandler.removeCallbacks(initialLoadingTimeoutRunnable)
+        initialLoadingHandler.removeCallbacks(initialLoadingPageFinishRunnable)
         initialLoadingView?.visibility = View.GONE
+    }
+
+    private fun scheduleInitialLoadingPageFinishFallback() {
+        initialLoadingHandler.removeCallbacks(initialLoadingPageFinishRunnable)
+        initialLoadingHandler.postDelayed(
+            initialLoadingPageFinishRunnable,
+            INITIAL_LOADING_PAGE_FINISH_FALLBACK_MS
+        )
     }
 
 
