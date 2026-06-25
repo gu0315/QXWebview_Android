@@ -25,6 +25,7 @@ import com.jd.plugins.ClosureRegistry
 import com.jd.plugins.PageResultCenter
 import com.jd.plugins.QXBridgePluginRegister
 import com.jd.plugins.QXHostBridgePlugin
+import com.jd.plugins.QXLifecyclePlugin
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -102,9 +103,31 @@ open class QXWebViewActivity : AppCompatActivity() {
         // 从 Intent 读取配置
         applyIntentConfig()
         registeredHostBridgePlugin = QXBridgePluginRegister.registerAllPlugins(webView)
+        QXLifecyclePlugin.dispatchPageLifecycle(webView, "pageLoad", "onCreate")
+    }
+
+    override fun onStart() {
+        super.onStart()
+        QXLifecyclePlugin.dispatchPageLifecycle(webView, "pageWillShow", "onStart")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        QXLifecyclePlugin.dispatchPageLifecycle(webView, "pageShow", "onResume")
+    }
+
+    override fun onPause() {
+        QXLifecyclePlugin.dispatchPageLifecycle(webView, "pageWillHide", "onPause")
+        super.onPause()
+    }
+
+    override fun onStop() {
+        QXLifecyclePlugin.dispatchPageLifecycle(webView, "pageHide", "onStop")
+        super.onStop()
     }
 
     override fun onDestroy() {
+        QXLifecyclePlugin.dispatchPageLifecycle(webView, "pageDestroy", "onDestroy")
         // 取消兜底：本页是"打开并等回传"的子页，用户直接返回（未调 closeWithResult）
         // 时回传 cancelled，避免打开方的 await 永久挂起。closeWithResult 已消费时此处为 no-op。
         if (isFinishing) {
@@ -114,6 +137,7 @@ open class QXWebViewActivity : AppCompatActivity() {
         }
         QXBridgePluginRegister.unregisterHostBridgePlugin(registeredHostBridgePlugin)
         registeredHostBridgePlugin = null
+        QXLifecyclePlugin.clear(webView)
         super.onDestroy()
     }
 

@@ -16,13 +16,13 @@ object QXBridgePluginRegister {
     @Volatile
     private var currentHostDelegate: QXWebViewHostDelegate? = null
 
-    /** 注册 Base / BLE / Host；返回 [QXHostBridgePlugin] 供 [unregisterHostBridgePlugin]。 */
+    /** 注册 Base / BLE / Host / Lifecycle；返回 [QXHostBridgePlugin] 供 [unregisterHostBridgePlugin]。 */
     public fun registerAllPlugins(webView: JDWebView?): QXHostBridgePlugin? {
         return registerAllPlugins(webView, null)
     }
 
     /**
-     * 注册 Base / BLE / Host，并为当前 WebView 绑定局部 Host delegate。
+     * 注册 Base / BLE / Host / Lifecycle，并为当前 WebView 绑定局部 Host delegate。
      * 未传 [hostDelegate] 时仍沿用全局 delegate，兼容旧接入方式。
      */
     public fun registerAllPlugins(
@@ -32,6 +32,7 @@ object QXBridgePluginRegister {
         val basePlugin = QXBasePlugin()
         val blePlugin = QXBlePlugin()
         val hostBridgePlugin = QXHostBridgePlugin()
+        val lifecyclePlugin = QXLifecyclePlugin()
         synchronized(hostBridgePluginsLock) {
             hostBridgePlugins.add(hostBridgePlugin)
         }
@@ -40,6 +41,7 @@ object QXBridgePluginRegister {
         webView?.let { registerPlugin(it, basePlugin.NAME, basePlugin) }
         webView?.let { registerPlugin(it, blePlugin.NAME, blePlugin) }
         webView?.let { registerPlugin(it, "QXHostBridgePlugin", hostBridgePlugin) }
+        webView?.let { registerPlugin(it, QXLifecyclePlugin.NAME, lifecyclePlugin) }
         return hostBridgePlugin
     }
 
