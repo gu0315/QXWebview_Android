@@ -282,7 +282,7 @@ open class QXWebViewActivity : AppCompatActivity() {
     private fun initInitialLoadingView() {
         val loadingContainer = FrameLayout(this).apply {
             setBackgroundColor(Color.WHITE)
-            clickable = true
+            isClickable = true
             visibility = View.GONE
         }
         val content = RelativeLayout(this)
