@@ -1,12 +1,15 @@
 import android.Manifest
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothGattService
 import android.bluetooth.le.ScanFilter
 import android.content.Intent
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.ParcelUuid
@@ -406,6 +409,7 @@ class QXBlePlugin : IBridgePlugin {
         // 清空之前的扫描结果，确保每次扫描都是全新的
         scannedDevices.clear()
         scannedDevicesInfo.clear()
+        includeSystemConnectedDevices(bleInstance, webView)
         bleInstance.startScan(object : BleScanCallback<BleDevice>() {
             /**
              * 扫描到设备回调
@@ -452,6 +456,36 @@ class QXBlePlugin : IBridgePlugin {
         callback?.onSuccess(JSONObject().apply { put("errMsg", "startBluetoothDevicesDiscovery:ok") })
     }
 
+    private fun includeSystemConnectedDevices(bleInstance: Ble<BleDevice>, webView: IBridgeWebView?) {
+        val activity = currentActivity?.get() ?: return
+        val bluetoothManager = activity.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            ActivityCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        runCatching {
+            bluetoothManager.getConnectedDevices(BluetoothProfile.GATT)
+        }.getOrDefault(emptyList()).forEach { bluetoothDevice ->
+            val bleDevice = bleInstance.getBleDevice(bluetoothDevice) ?: return@forEach
+            if (scannedDevices.any { it.bleAddress == bleDevice.bleAddress }) {
+                return@forEach
+            }
+            scannedDevices.add(bleDevice)
+            scannedDevicesInfo.add(BluetoothDeviceInfo(bleDevice, 0, null))
+            sendBleEvent(
+                webView,
+                QXBLEventType.ON_BLUETOOTH_DEVICE_FOUND,
+                JSONObject().apply {
+                    put("name", bleDevice.bleName ?: "")
+                    put("RSSI", 0)
+                    put("deviceId", bleDevice.bleAddress)
+                    put("isSystemConnected", true)
+                }
+            )
+        }
+    }
+
     /**
      * 停止扫描
      */
@@ -479,10 +513,6 @@ class QXBlePlugin : IBridgePlugin {
 
         val device = scannedDevices.firstOrNull { it.bleAddress == deviceId }
             ?: ble?.getBleDevice(deviceId)
-            ?: run {
-            sendFailCallback(callback, QXBleErrorCode.DEVICE_NOT_FOUND, "未扫描到该设备（MAC：$deviceId）")
-            return
-        }
 
         val connectedDevice = ble?.connectedDevices?.firstOrNull { it.bleAddress == deviceId }
         if (connectedDevice?.isConnected == true) {
@@ -500,13 +530,15 @@ class QXBlePlugin : IBridgePlugin {
         ble?.stopScan()
 
         fun clearStaleConnection(address: String) {
-            runCatching { ble?.disconnect(device) }
+            device?.let { targetDevice ->
+                runCatching { ble?.disconnect(targetDevice) }
+            }
             runCatching { getBluetoothGatt(address)?.close() }
             runCatching { ble?.refreshDeviceCache(address) }
         }
 
         fun doConnect(attempt: Int) {
-            ble?.connect(device, object : BleConnectCallback<BleDevice>() {
+            val connectCallback = object : BleConnectCallback<BleDevice>() {
                 override fun onServicesDiscovered(device: BleDevice, gatt: BluetoothGatt) {
                     super.onServicesDiscovered(device, gatt)
                 }
@@ -546,7 +578,13 @@ class QXBlePlugin : IBridgePlugin {
                     )
                     Log.d(NAME, "设备连接成功")
                 }
-            })
+            }
+            if (device != null) {
+                ble?.connect(device, connectCallback)
+            } else {
+                Log.d(NAME, "扫描列表未命中，尝试通过MAC地址直连设备：$deviceId")
+                ble?.connect(deviceId, connectCallback)
+            }
         }
 
         clearStaleConnection(deviceId)
