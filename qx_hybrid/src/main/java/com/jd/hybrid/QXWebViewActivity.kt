@@ -2,9 +2,12 @@ package com.jd.hybrid
 
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.Gravity
 import android.view.View
@@ -13,8 +16,10 @@ import android.webkit.JsPromptResult
 import android.webkit.JsResult
 import android.webkit.WebChromeClient
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ProgressBar
 import android.widget.RelativeLayout
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
@@ -73,6 +78,7 @@ open class QXWebViewActivity : AppCompatActivity() {
         private const val TAG = "QXWebViewActivity"
         private const val NAV_BAR_HEIGHT_DP = 48
         private const val STATUS_BAR_DEFAULT_DP = 24
+        private const val INITIAL_LOADING_TIMEOUT_MS = 10000L
 
         const val EXTRA_URL = "extra_url"
         const val EXTRA_IMMERSIVE = "extra_immersive"
@@ -86,6 +92,9 @@ open class QXWebViewActivity : AppCompatActivity() {
     private lateinit var navBar: RelativeLayout
     private lateinit var titleView: TextView
     private lateinit var backBtn: TextView
+    private var initialLoadingView: View? = null
+    private val initialLoadingHandler = Handler(Looper.getMainLooper())
+    private val initialLoadingTimeoutRunnable = Runnable { hideInitialLoading() }
 
     private var isImmersive = false
     private var isNavBarVisible = false
@@ -138,6 +147,7 @@ open class QXWebViewActivity : AppCompatActivity() {
         QXBridgePluginRegister.unregisterHostBridgePlugin(registeredHostBridgePlugin)
         registeredHostBridgePlugin = null
         QXLifecyclePlugin.clear(webView)
+        initialLoadingHandler.removeCallbacks(initialLoadingTimeoutRunnable)
         super.onDestroy()
     }
 
@@ -172,18 +182,40 @@ open class QXWebViewActivity : AppCompatActivity() {
         webView = createWebView()
         setupUA()
         setupWebChromeClient()
+        setupWebViewClient()
         root.addView(webView, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
+        initInitialLoadingView()
         initNavBar()
         updateLayout()
+        showInitialLoading()
     }
 
     /**
      * 创建 WebView
      */
     protected open fun createWebView(): JDWebView = JDWebView(this)
+
+    private fun setupWebViewClient() {
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                showInitialLoading()
+            }
+
+            override fun onPageCommitVisible(view: WebView?, url: String?) {
+                super.onPageCommitVisible(view, url)
+                hideInitialLoading()
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                hideInitialLoading()
+            }
+        }
+    }
 
     private fun setupWebChromeClient() {
         webView.webChromeClient = object : WebChromeClient() {
@@ -246,6 +278,61 @@ open class QXWebViewActivity : AppCompatActivity() {
     }
 
     // endregion
+
+    private fun initInitialLoadingView() {
+        val loadingContainer = FrameLayout(this).apply {
+            setBackgroundColor(Color.WHITE)
+            clickable = true
+            visibility = View.GONE
+        }
+        val content = RelativeLayout(this)
+        val progressBar = ProgressBar(this).apply {
+            id = View.generateViewId()
+            isIndeterminate = true
+        }
+        content.addView(progressBar, RelativeLayout.LayoutParams(dp2px(32f), dp2px(32f)).apply {
+            addRule(RelativeLayout.CENTER_HORIZONTAL)
+            addRule(RelativeLayout.CENTER_VERTICAL)
+        })
+        val textView = TextView(this).apply {
+            text = "加载中..."
+            textSize = 14f
+            setTextColor(Color.parseColor("#666666"))
+            gravity = Gravity.CENTER
+        }
+        content.addView(textView, RelativeLayout.LayoutParams(
+            RelativeLayout.LayoutParams.WRAP_CONTENT,
+            RelativeLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            addRule(RelativeLayout.CENTER_HORIZONTAL)
+            addRule(RelativeLayout.BELOW, progressBar.id)
+            topMargin = dp2px(12f)
+        })
+        loadingContainer.addView(content, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+        root.addView(loadingContainer, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+        initialLoadingView = loadingContainer
+    }
+
+    fun showInitialLoading() {
+        initialLoadingHandler.removeCallbacks(initialLoadingTimeoutRunnable)
+        initialLoadingView?.apply {
+            visibility = View.VISIBLE
+            bringToFront()
+        }
+        navBar.bringToFront()
+        initialLoadingHandler.postDelayed(initialLoadingTimeoutRunnable, INITIAL_LOADING_TIMEOUT_MS)
+    }
+
+    fun hideInitialLoading() {
+        initialLoadingHandler.removeCallbacks(initialLoadingTimeoutRunnable)
+        initialLoadingView?.visibility = View.GONE
+    }
 
 
     // region 导航栏

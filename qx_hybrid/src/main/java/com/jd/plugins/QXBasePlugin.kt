@@ -168,10 +168,23 @@ class QXBasePlugin : IBridgePlugin {
                 handleClearStorage(webView, callback)
                 return true
             }
+
+            "notifyFirstRender" -> {
+                handleNotifyFirstRender(webView, callback)
+                return true
+            }
             else -> {
                 return false
             }
         }
+    }
+
+    private fun handleNotifyFirstRender(
+        webView: IBridgeWebView?,
+        callback: IBridgeCallback?
+    ) {
+        (webView?.view?.context as? QXWebViewActivity)?.hideInitialLoading()
+        callback?.onSuccess(JSONObject().apply { put("success", true) })
     }
 
     // region 原生 KV 存储(替代易丢失的 localStorage)
