@@ -84,6 +84,7 @@ class QXBlePlugin : IBridgePlugin {
     private val KEY_BLE_PERMISSION_REQUESTED = "ble_permission_requested"
     private val INIT_RETRY_DELAY_MS = 250L
     private val CONNECT_RETRY_DELAY_MS = 400L
+    private val SYSTEM_KNOWN_CONNECT_SCAN_TIMEOUT_MS = 8000L
 
 
     /**
@@ -155,6 +156,16 @@ class QXBlePlugin : IBridgePlugin {
      * 用于getBluetoothDevices接口返回详细设备信息
      */
     private val scannedDevicesInfo = mutableListOf<BluetoothDeviceInfo>()
+
+    private data class SystemBluetoothDeviceInfo(
+        val deviceId: String,
+        val name: String,
+        val rssi: Int = 0,
+        val isSystemConnected: Boolean = false,
+        val isBonded: Boolean = false
+    )
+
+    private val systemKnownDevicesInfo = mutableListOf<SystemBluetoothDeviceInfo>()
 
 
     override fun execute(
@@ -409,7 +420,8 @@ class QXBlePlugin : IBridgePlugin {
         // 清空之前的扫描结果，确保每次扫描都是全新的
         scannedDevices.clear()
         scannedDevicesInfo.clear()
-        includeSystemConnectedDevices(bleInstance, webView)
+        systemKnownDevicesInfo.clear()
+        includeSystemKnownDevices(bleInstance, webView)
         bleInstance.startScan(object : BleScanCallback<BleDevice>() {
             /**
              * 扫描到设备回调
@@ -456,7 +468,7 @@ class QXBlePlugin : IBridgePlugin {
         callback?.onSuccess(JSONObject().apply { put("errMsg", "startBluetoothDevicesDiscovery:ok") })
     }
 
-    private fun includeSystemConnectedDevices(bleInstance: Ble<BleDevice>, webView: IBridgeWebView?) {
+    private fun includeSystemKnownDevices(bleInstance: Ble<BleDevice>, webView: IBridgeWebView?) {
         val activity = currentActivity?.get() ?: return
         val bluetoothManager = activity.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
@@ -464,25 +476,65 @@ class QXBlePlugin : IBridgePlugin {
         ) {
             return
         }
-        runCatching {
-            bluetoothManager.getConnectedDevices(BluetoothProfile.GATT)
-        }.getOrDefault(emptyList()).forEach { bluetoothDevice ->
-            val bleDevice = bleInstance.getBleDevice(bluetoothDevice) ?: return@forEach
-            if (scannedDevices.any { it.bleAddress == bleDevice.bleAddress }) {
-                return@forEach
+
+        fun appendDevice(bluetoothDevice: android.bluetooth.BluetoothDevice, isSystemConnected: Boolean, isBonded: Boolean) {
+            val deviceId = bluetoothDevice.address ?: return
+            val deviceName = runCatching { bluetoothDevice.name }.getOrNull().orEmpty()
+            val bleDevice = bleInstance.getBleDevice(bluetoothDevice)
+            if (isSystemConnected && bleDevice != null && scannedDevices.none { it.bleAddress == deviceId }) {
+                scannedDevices.add(bleDevice)
+                scannedDevicesInfo.add(BluetoothDeviceInfo(bleDevice, 0, null))
             }
-            scannedDevices.add(bleDevice)
-            scannedDevicesInfo.add(BluetoothDeviceInfo(bleDevice, 0, null))
+
+            val knownDevice = SystemBluetoothDeviceInfo(
+                deviceId = deviceId,
+                name = bleDevice?.bleName ?: deviceName,
+                isSystemConnected = isSystemConnected,
+                isBonded = isBonded
+            )
+            val knownIndex = systemKnownDevicesInfo.indexOfFirst { it.deviceId == deviceId }
+            val previousKnownDevice = systemKnownDevicesInfo.getOrNull(knownIndex)
+            if (knownIndex >= 0) {
+                systemKnownDevicesInfo[knownIndex] = previousKnownDevice!!.copy(
+                    name = knownDevice.name.ifBlank { previousKnownDevice.name },
+                    isSystemConnected = previousKnownDevice.isSystemConnected || knownDevice.isSystemConnected,
+                    isBonded = previousKnownDevice.isBonded || knownDevice.isBonded
+                )
+            } else {
+                systemKnownDevicesInfo.add(knownDevice)
+            }
+
+            val mergedKnownDevice = systemKnownDevicesInfo.first { it.deviceId == deviceId }
+            if (!mergedKnownDevice.isSystemConnected && mergedKnownDevice.isBonded) {
+                Log.d(NAME, "跳过仅系统已配对但未GATT连接的设备展示：$deviceId")
+                return
+            }
+            if (previousKnownDevice?.isSystemConnected == true) {
+                return
+            }
             sendBleEvent(
                 webView,
                 QXBLEventType.ON_BLUETOOTH_DEVICE_FOUND,
                 JSONObject().apply {
-                    put("name", bleDevice.bleName ?: "")
-                    put("RSSI", 0)
-                    put("deviceId", bleDevice.bleAddress)
-                    put("isSystemConnected", true)
+                    put("name", mergedKnownDevice.name)
+                    put("RSSI", mergedKnownDevice.rssi)
+                    put("deviceId", mergedKnownDevice.deviceId)
+                    put("isSystemConnected", mergedKnownDevice.isSystemConnected)
+                    put("isBonded", mergedKnownDevice.isBonded)
                 }
             )
+        }
+
+        runCatching {
+            bluetoothManager.getConnectedDevices(BluetoothProfile.GATT)
+        }.getOrDefault(emptyList()).forEach { bluetoothDevice ->
+            appendDevice(bluetoothDevice, isSystemConnected = true, isBonded = bluetoothDevice.bondState == android.bluetooth.BluetoothDevice.BOND_BONDED)
+        }
+
+        runCatching {
+            BluetoothAdapter.getDefaultAdapter()?.bondedDevices.orEmpty()
+        }.getOrDefault(emptySet()).forEach { bluetoothDevice ->
+            appendDevice(bluetoothDevice, isSystemConnected = false, isBonded = true)
         }
     }
 
@@ -513,6 +565,11 @@ class QXBlePlugin : IBridgePlugin {
 
         val device = scannedDevices.firstOrNull { it.bleAddress == deviceId }
             ?: ble?.getBleDevice(deviceId)
+        val systemKnownDevice = systemKnownDevicesInfo.firstOrNull { it.deviceId == deviceId }
+        val requiresLiveScanBeforeConnect =
+            systemKnownDevice?.isBonded == true &&
+                !systemKnownDevice.isSystemConnected &&
+                scannedDevices.none { it.bleAddress == deviceId }
 
         val connectedDevice = ble?.connectedDevices?.firstOrNull { it.bleAddress == deviceId }
         if (connectedDevice?.isConnected == true) {
@@ -529,15 +586,15 @@ class QXBlePlugin : IBridgePlugin {
 
         ble?.stopScan()
 
-        fun clearStaleConnection(address: String) {
-            device?.let { targetDevice ->
+        fun clearStaleConnection(address: String, targetDevice: BleDevice?) {
+            targetDevice?.let {
                 runCatching { ble?.disconnect(targetDevice) }
             }
             runCatching { getBluetoothGatt(address)?.close() }
             runCatching { ble?.refreshDeviceCache(address) }
         }
 
-        fun doConnect(attempt: Int) {
+        fun doConnect(targetDevice: BleDevice?, attempt: Int) {
             val connectCallback = object : BleConnectCallback<BleDevice>() {
                 override fun onServicesDiscovered(device: BleDevice, gatt: BluetoothGatt) {
                     super.onServicesDiscovered(device, gatt)
@@ -557,9 +614,9 @@ class QXBlePlugin : IBridgePlugin {
                 override fun onConnectFailed(device: BleDevice, errorCode: Int) {
                     Log.w(NAME, "连接失败 attempt=$attempt, errorCode=$errorCode, deviceId=${device.bleAddress}")
                     if (attempt < 2) {
-                        clearStaleConnection(device.bleAddress)
+                        clearStaleConnection(device.bleAddress, device)
                         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                            doConnect(attempt + 1)
+                            doConnect(device, attempt + 1)
                         }, CONNECT_RETRY_DELAY_MS)
                         return
                     }
@@ -579,16 +636,87 @@ class QXBlePlugin : IBridgePlugin {
                     Log.d(NAME, "设备连接成功")
                 }
             }
-            if (device != null) {
-                ble?.connect(device, connectCallback)
+            if (targetDevice != null) {
+                ble?.connect(targetDevice, connectCallback)
             } else {
                 Log.d(NAME, "扫描列表未命中，尝试通过MAC地址直连设备：$deviceId")
                 ble?.connect(deviceId, connectCallback)
             }
         }
 
-        clearStaleConnection(deviceId)
-        doConnect(1)
+        fun connectResolvedDevice(targetDevice: BleDevice?) {
+            clearStaleConnection(deviceId, targetDevice)
+            doConnect(targetDevice, 1)
+        }
+
+        if (requiresLiveScanBeforeConnect) {
+            scanLiveDeviceBeforeConnect(deviceId, callback) { liveDevice ->
+                connectResolvedDevice(liveDevice)
+            }
+            return
+        }
+
+        connectResolvedDevice(device)
+    }
+
+    private fun scanLiveDeviceBeforeConnect(
+        deviceId: String,
+        callback: IBridgeCallback?,
+        onFound: (BleDevice) -> Unit
+    ) {
+        val bleInstance = ble ?: run {
+            sendFailCallback(callback, QXBleErrorCode.PERIPHERAL_NIL, "蓝牙未初始化")
+            return
+        }
+        var finished = false
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        lateinit var timeoutRunnable: Runnable
+        lateinit var scanCallback: BleScanCallback<BleDevice>
+
+        fun finishWithDevice(device: BleDevice) {
+            if (finished) return
+            finished = true
+            handler.removeCallbacks(timeoutRunnable)
+            runCatching { bleInstance.stopScan() }
+            if (scannedDevices.none { it.bleAddress == device.bleAddress }) {
+                scannedDevices.add(device)
+                scannedDevicesInfo.add(BluetoothDeviceInfo(device, 0, null))
+            }
+            Log.d(NAME, "系统已知设备实时扫描命中，准备连接：$deviceId")
+            onFound(device)
+        }
+
+        fun finishWithTimeout() {
+            if (finished) return
+            finished = true
+            runCatching { bleInstance.stopScan() }
+            sendFailCallback(
+                callback,
+                QXBleErrorCode.CONNECT_TIMEOUT,
+                "设备当前未广播或不可连接，请确认设备未被系统蓝牙占用后重试"
+            )
+        }
+
+        timeoutRunnable = Runnable { finishWithTimeout() }
+        scanCallback = object : BleScanCallback<BleDevice>() {
+            override fun onLeScan(device: BleDevice, rssi: Int, scanRecord: ByteArray?) {
+                if (device.bleAddress == deviceId) {
+                    finishWithDevice(device)
+                }
+            }
+
+            override fun onScanFailed(errorCode: Int) {
+                if (finished) return
+                finished = true
+                handler.removeCallbacks(timeoutRunnable)
+                runCatching { bleInstance.stopScan() }
+                sendFailCallback(callback, QXBleErrorCode.SCAN_NOT_AVAILABLE, "连接前扫描失败: $errorCode")
+            }
+        }
+
+        Log.d(NAME, "系统已知设备连接前先扫描实时广播：$deviceId")
+        bleInstance.startScan(scanCallback, SYSTEM_KNOWN_CONNECT_SCAN_TIMEOUT_MS)
+        handler.postDelayed(timeoutRunnable, SYSTEM_KNOWN_CONNECT_SCAN_TIMEOUT_MS + 500L)
     }
 
     /**
@@ -953,6 +1081,8 @@ class QXBlePlugin : IBridgePlugin {
             }
             // 清空扫描到的设备列表
             scannedDevices.clear()
+            scannedDevicesInfo.clear()
+            systemKnownDevicesInfo.clear()
             // 释放蓝牙资源
             ble?.released()
             // ble = null
@@ -1052,28 +1182,52 @@ class QXBlePlugin : IBridgePlugin {
                 sendFailCallback(callback, QXBleErrorCode.NOT_INIT, "未初始化蓝牙适配器")
                 return
             }
+            systemKnownDevicesInfo.clear()
+            ble?.let { includeSystemKnownDevices(it, null) }
             val devicesArray = JSONArray()
+            val emittedDeviceIds = mutableSetOf<String>()
             // 添加已扫描到的设备
             scannedDevicesInfo.forEach { deviceInfo ->
                 val device = deviceInfo.device
+                val systemKnownDevice = systemKnownDevicesInfo.firstOrNull { it.deviceId == device.bleAddress }
                 val deviceJson = JSONObject().apply {
                     put("name", device.bleName ?: "")
                     put("RSSI", deviceInfo.rssi)
                     put("deviceId", device.bleAddress)
+                    put("isSystemConnected", systemKnownDevice?.isSystemConnected == true)
+                    put("isBonded", systemKnownDevice?.isBonded == true)
                 }
                 devicesArray.put(deviceJson)
+                emittedDeviceIds.add(device.bleAddress)
+            }
+
+            systemKnownDevicesInfo.forEach { deviceInfo ->
+                if (!emittedDeviceIds.contains(deviceInfo.deviceId) && deviceInfo.isSystemConnected) {
+                    val deviceJson = JSONObject().apply {
+                        put("name", deviceInfo.name)
+                        put("RSSI", deviceInfo.rssi)
+                        put("deviceId", deviceInfo.deviceId)
+                        put("isSystemConnected", deviceInfo.isSystemConnected)
+                        put("isBonded", deviceInfo.isBonded)
+                    }
+                    devicesArray.put(deviceJson)
+                    emittedDeviceIds.add(deviceInfo.deviceId)
+                }
             }
 
             // 添加已连接的设备
             ble?.connectedDevices?.forEach { connectedDevice ->
-                val isAlreadyInList = scannedDevicesInfo.any { it.device.bleAddress == connectedDevice.bleAddress }
-                if (!isAlreadyInList) {
+                if (!emittedDeviceIds.contains(connectedDevice.bleAddress)) {
+                    val systemKnownDevice = systemKnownDevicesInfo.firstOrNull { it.deviceId == connectedDevice.bleAddress }
                     val deviceJson = JSONObject().apply {
                         put("name", connectedDevice.bleName ?: "")
                         put("RSSI", 0) // 已连接设备没有实时 RSSI
                         put("deviceId", connectedDevice.bleAddress)
+                        put("isSystemConnected", systemKnownDevice?.isSystemConnected == true)
+                        put("isBonded", systemKnownDevice?.isBonded == true)
                     }
                     devicesArray.put(deviceJson)
+                    emittedDeviceIds.add(connectedDevice.bleAddress)
                 }
             }
 
@@ -1355,6 +1509,8 @@ class QXBlePlugin : IBridgePlugin {
 
     fun onDestroy() {
         scannedDevices.clear()
+        scannedDevicesInfo.clear()
+        systemKnownDevicesInfo.clear()
         currentActivity?.clear()
     }
 }
