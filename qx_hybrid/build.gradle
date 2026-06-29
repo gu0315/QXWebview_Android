@@ -1,8 +1,16 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
-    id 'maven-publish' //用于发布Maven依赖
+    id 'maven-publish'
 }
+
+def qxHybridGroupId = findProperty("QX_HYBRID_GROUP_ID") ?: "com.energy.sdk"
+def qxHybridArtifactId = findProperty("QX_HYBRID_ARTIFACT_ID") ?: "qx-hybrid"
+def qxHybridVersion = findProperty("QX_HYBRID_VERSION") ?: "0.1.8"
+def mavenRepositoryUrl = findProperty("MAVEN_REPOSITORY_URL") ?: System.getenv("MAVEN_REPOSITORY_URL")
+def mavenRepositoryName = findProperty("MAVEN_REPOSITORY_NAME") ?: "remoteMaven"
+def mavenUsername = findProperty("MAVEN_USERNAME") ?: System.getenv("MAVEN_USERNAME")
+def mavenPassword = findProperty("MAVEN_PASSWORD") ?: System.getenv("MAVEN_PASSWORD")
 
 android {
     namespace 'com.energy.qx_hybrid'
@@ -74,9 +82,30 @@ afterEvaluate {
             release(MavenPublication) {
                 // 关联打包产物：发布release版本的aar
                 from components.release
-                groupId = "com.energy.sdk"
-                artifactId = "qx-hybrid"
-                version = "0.1.0"
+                groupId = qxHybridGroupId
+                artifactId = qxHybridArtifactId
+                version = qxHybridVersion
+
+                pom {
+                    name = "QX Hybrid"
+                    description = "QX Hybrid Android SDK"
+                }
+            }
+        }
+
+        repositories {
+            if (mavenRepositoryUrl) {
+                maven {
+                    name = mavenRepositoryName
+                    url = uri(mavenRepositoryUrl)
+
+                    if (mavenUsername && mavenPassword) {
+                        credentials {
+                            username = mavenUsername
+                            password = mavenPassword
+                        }
+                    }
+                }
             }
         }
     }
