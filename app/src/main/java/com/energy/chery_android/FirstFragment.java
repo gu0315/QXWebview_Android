@@ -23,7 +23,7 @@ import java.util.List;
 public class FirstFragment extends Fragment {
 
     private static final String BRIDGE_TEST_URL = "file:///android_asset/bridge_test.html";
-    private static final String DEFAULT_H5_URL = "https://test-fr-home-charge-web.cheryge.com/#/";
+    private static final String DEFAULT_H5_URL = "http://192.168.31.137:5173/";
 
     private FragmentFirstBinding binding;
     private final List<View> vehicleRows = new ArrayList<>();

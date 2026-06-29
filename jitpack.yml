@@ -1,5 +1,0 @@
-jdk:
-  - openjdk17
-
-install:
-  - ./gradlew :qx_hybrid:publishToMavenLocal -PQX_HYBRID_GROUP_ID=com.github.gu0315.QXWebview_Android -PQX_HYBRID_ARTIFACT_ID=qx_hybrid -PQX_HYBRID_VERSION=$VERSION
