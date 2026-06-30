@@ -4,6 +4,14 @@
 
 公司有 GitLab 时，不需要单独搭 Maven 私服。GitLab 项目自带 Maven Package Registry，可以发布 Android AAR。
 
+当前仓库地址：
+
+```text
+https://paas-gitlab.mychery.com/20238591/QXWebview_Android
+```
+
+CI 发布时会自动使用 GitLab 提供的 `$CI_PROJECT_ID`，不需要手动填写项目 ID。
+
 默认发布坐标：
 
 ```gradle
@@ -49,10 +57,16 @@ tag push 会发布到当前 GitLab 项目的 Maven Package Registry：
 发布成功后，包地址格式是：
 
 ```text
-https://<gitlab-host>/api/v4/projects/<PROJECT_ID>/packages/maven
+https://paas-gitlab.mychery.com/api/v4/projects/<PROJECT_ID>/packages/maven
 ```
 
 `PROJECT_ID` 在 GitLab 项目首页或 Settings 页面可以看到。
+
+如果暂时不知道数字 `PROJECT_ID`，也可以尝试使用 URL 编码后的项目路径：
+
+```text
+https://paas-gitlab.mychery.com/api/v4/projects/20238591%2FQXWebview_Android/packages/maven
+```
 
 ## 宿主工程接入
 
@@ -73,7 +87,7 @@ dependencyResolutionManagement {
         mavenCentral()
         maven { url 'https://jitpack.io' }
         maven {
-            url = uri("https://<gitlab-host>/api/v4/projects/<PROJECT_ID>/packages/maven")
+            url = uri("https://paas-gitlab.mychery.com/api/v4/projects/<PROJECT_ID>/packages/maven")
             credentials(HttpHeaderCredentials) {
                 name = "Private-Token"
                 value = gitLabMavenToken
@@ -90,7 +104,7 @@ dependencyResolutionManagement {
 
 ```gradle
 maven {
-    url = uri("https://<gitlab-host>/api/v4/projects/<PROJECT_ID>/packages/maven")
+    url = uri("https://paas-gitlab.mychery.com/api/v4/projects/<PROJECT_ID>/packages/maven")
     credentials {
         username = gitLabMavenUsername
         password = gitLabMavenToken
@@ -145,7 +159,7 @@ export JAVA_HOME=$(/usr/libexec/java_home -v 17)
 ./gradlew :qx_hybrid:publishReleasePublicationToGitLabRepository \
   -PQX_HYBRID_VERSION=0.1.8 \
   -PMAVEN_REPOSITORY_NAME=GitLab \
-  -PMAVEN_REPOSITORY_URL=https://<gitlab-host>/api/v4/projects/<PROJECT_ID>/packages/maven \
+  -PMAVEN_REPOSITORY_URL=https://paas-gitlab.mychery.com/api/v4/projects/<PROJECT_ID>/packages/maven \
   -PMAVEN_USERNAME=your_gitlab_username \
   -PMAVEN_PASSWORD=your_access_token
 ```

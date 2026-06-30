@@ -1,4 +1,4 @@
-image: eclipse-temurin:17-jdk
+image: cimg/android:2025.06.1
 
 stages:
   - verify
@@ -25,9 +25,10 @@ publish_qx_hybrid:
     - if: "$CI_COMMIT_TAG"
   script:
     - chmod +x ./gradlew
-    - ./gradlew :qx_hybrid:publishReleasePublicationToGitLabRepository
-      -PQX_HYBRID_VERSION="$CI_COMMIT_TAG"
-      -PMAVEN_REPOSITORY_NAME=GitLab
-      -PMAVEN_REPOSITORY_URL="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/maven"
-      -PMAVEN_USERNAME=gitlab-ci-token
-      -PMAVEN_PASSWORD="$CI_JOB_TOKEN"
+    - |
+      ./gradlew :qx_hybrid:publishReleasePublicationToGitLabRepository \
+        -PQX_HYBRID_VERSION="$CI_COMMIT_TAG" \
+        -PMAVEN_REPOSITORY_NAME=GitLab \
+        -PMAVEN_REPOSITORY_URL="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/maven" \
+        -PMAVEN_USERNAME=gitlab-ci-token \
+        -PMAVEN_PASSWORD="$CI_JOB_TOKEN"

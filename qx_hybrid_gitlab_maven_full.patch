@@ -1,0 +1,332 @@
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+new file mode 100644
+index 0000000..8af5369
+--- /dev/null
++++ b/.gitlab-ci.yml
+@@ -0,0 +1,34 @@
++image: cimg/android:2025.06.1
++
++stages:
++  - verify
++  - publish
++
++variables:
++  GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle"
++
++cache:
++  key: "$CI_PROJECT_ID-gradle"
++  paths:
++    - .gradle/wrapper
++    - .gradle/caches
++
++verify_qx_hybrid:
++  stage: verify
++  script:
++    - chmod +x ./gradlew
++    - ./gradlew :qx_hybrid:assembleRelease
++
++publish_qx_hybrid:
++  stage: publish
++  rules:
++    - if: "$CI_COMMIT_TAG"
++  script:
++    - chmod +x ./gradlew
++    - |
++      ./gradlew :qx_hybrid:publishReleasePublicationToGitLabRepository \
++        -PQX_HYBRID_VERSION="$CI_COMMIT_TAG" \
++        -PMAVEN_REPOSITORY_NAME=GitLab \
++        -PMAVEN_REPOSITORY_URL="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/maven" \
++        -PMAVEN_USERNAME=gitlab-ci-token \
++        -PMAVEN_PASSWORD="$CI_JOB_TOKEN"
+diff --git a/gradle.properties b/gradle.properties
+index 85e7422..534063a 100644
+--- a/gradle.properties
++++ b/gradle.properties
+@@ -7,8 +7,6 @@
+ # Specifies the JVM arguments used for the daemon process.
+ # The setting is particularly useful for tweaking memory settings.
+ org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+-# 指定使用Java 17运行Gradle，因为Android Gradle插件需要Java 17
+-org.gradle.java.home=/Library/Java/JavaVirtualMachines/jdk-17.jdk/Contents/Home
+ # When configured, Gradle will run in incubating parallel mode.
+ # This option should only be used with decoupled projects. For more details, visit
+ # https://developer.android.com/r/tools/gradle-multi-project-decoupled-projects
+@@ -20,4 +18,4 @@ android.useAndroidX=true
+ # Enables namespacing of each library's R class so that its R class includes only the
+ # resources declared in the library itself and none from the library's dependencies,
+ # thereby reducing the size of the R class for that library
+-android.nonTransitiveRClass=true
+\ No newline at end of file
++android.nonTransitiveRClass=true
+diff --git a/gradle/wrapper/gradle-wrapper.properties b/gradle/wrapper/gradle-wrapper.properties
+index 4eb7887..2974537 100644
+--- a/gradle/wrapper/gradle-wrapper.properties
++++ b/gradle/wrapper/gradle-wrapper.properties
+@@ -1,6 +1,6 @@
+ #Thu Oct 09 21:23:20 CST 2025
+ distributionBase=GRADLE_USER_HOME
+ distributionPath=wrapper/dists
+-distributionUrl=https\://services.gradle.org/distributions/gradle-8.13-bin.zip
++distributionUrl=https\://mirrors.huaweicloud.com/gradle/gradle-8.13-bin.zip
+ zipStoreBase=GRADLE_USER_HOME
+ zipStorePath=wrapper/dists
+diff --git a/qx_hybrid/MAVEN_PUBLISH.md b/qx_hybrid/MAVEN_PUBLISH.md
+new file mode 100644
+index 0000000..e071672
+--- /dev/null
++++ b/qx_hybrid/MAVEN_PUBLISH.md
+@@ -0,0 +1,167 @@
++# QX Hybrid Android Maven 发布
++
++## 推荐方案：GitLab Package Registry
++
++公司有 GitLab 时，不需要单独搭 Maven 私服。GitLab 项目自带 Maven Package Registry，可以发布 Android AAR。
++
++当前仓库地址：
++
++```text
++https://paas-gitlab.mychery.com/20238591/QXWebview_Android
++```
++
++CI 发布时会自动使用 GitLab 提供的 `$CI_PROJECT_ID`，不需要手动填写项目 ID。
++
++默认发布坐标：
++
++```gradle
++com.energy.sdk:qx-hybrid:0.1.8
++```
++
++## 版本号
++
++默认版本是 `0.1.8`，也可以通过 Gradle 参数覆盖：
++
++```bash
++./gradlew :qx_hybrid:publishToMavenLocal -PQX_HYBRID_VERSION=0.1.9
++```
++
++GitLab CI 发布时会自动使用 tag 作为版本号：
++
++```bash
++git tag 0.1.8
++git push origin 0.1.8
++```
++
++## GitLab CI 自动发布
++
++仓库根目录已增加 `.gitlab-ci.yml`。
++
++普通分支 push 会执行：
++
++```bash
++./gradlew :qx_hybrid:assembleRelease
++```
++
++tag push 会发布到当前 GitLab 项目的 Maven Package Registry：
++
++```bash
++./gradlew :qx_hybrid:publishReleasePublicationToGitLabRepository \
++  -PQX_HYBRID_VERSION="$CI_COMMIT_TAG" \
++  -PMAVEN_REPOSITORY_NAME=GitLab \
++  -PMAVEN_REPOSITORY_URL="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/maven" \
++  -PMAVEN_USERNAME=gitlab-ci-token \
++  -PMAVEN_PASSWORD="$CI_JOB_TOKEN"
++```
++
++发布成功后，包地址格式是：
++
++```text
++https://paas-gitlab.mychery.com/api/v4/projects/<PROJECT_ID>/packages/maven
++```
++
++`PROJECT_ID` 在 GitLab 项目首页或 Settings 页面可以看到。
++
++如果暂时不知道数字 `PROJECT_ID`，也可以尝试使用 URL 编码后的项目路径：
++
++```text
++https://paas-gitlab.mychery.com/api/v4/projects/20238591%2FQXWebview_Android/packages/maven
++```
++
++## 宿主工程接入
++
++在宿主工程 `settings.gradle` 增加 GitLab Maven 仓库：
++
++```gradle
++def gitLabMavenUsername = providers.gradleProperty("GITLAB_MAVEN_USERNAME")
++        .orElse(providers.environmentVariable("GITLAB_MAVEN_USERNAME"))
++        .orNull
++def gitLabMavenToken = providers.gradleProperty("GITLAB_MAVEN_TOKEN")
++        .orElse(providers.environmentVariable("GITLAB_MAVEN_TOKEN"))
++        .orNull
++
++dependencyResolutionManagement {
++    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
++    repositories {
++        google()
++        mavenCentral()
++        maven { url 'https://jitpack.io' }
++        maven {
++            url = uri("https://paas-gitlab.mychery.com/api/v4/projects/<PROJECT_ID>/packages/maven")
++            credentials(HttpHeaderCredentials) {
++                name = "Private-Token"
++                value = gitLabMavenToken
++            }
++            authentication {
++                header(HttpHeaderAuthentication)
++            }
++        }
++    }
++}
++```
++
++如果公司 GitLab 不支持 Header Token，也可以用用户名和 Token：
++
++```gradle
++maven {
++    url = uri("https://paas-gitlab.mychery.com/api/v4/projects/<PROJECT_ID>/packages/maven")
++    credentials {
++        username = gitLabMavenUsername
++        password = gitLabMavenToken
++    }
++}
++```
++
++在宿主 app 的 `build.gradle` 引用：
++
++```gradle
++implementation 'com.energy.sdk:qx-hybrid:0.1.8'
++```
++
++建议把访问 token 放到宿主工程开发机的 `~/.gradle/gradle.properties`：
++
++```properties
++GITLAB_MAVEN_USERNAME=your_gitlab_username
++GITLAB_MAVEN_TOKEN=your_access_token
++```
++
++## 本地验证
++
++本机默认 Java 不是 17 时，先指定 Java 17：
++
++```bash
++export JAVA_HOME=$(/usr/libexec/java_home -v 17)
++```
++
++验证 AAR 构建：
++
++```bash
++./gradlew :qx_hybrid:assembleRelease
++```
++
++验证 Maven 发布产物：
++
++```bash
++./gradlew :qx_hybrid:publishToMavenLocal
++```
++
++生成的本地 Maven 路径：
++
++```text
++~/.m2/repository/com/energy/sdk/qx-hybrid/<version>/
++```
++
++## 手动发布到 GitLab
++
++不走 CI 时，也可以手动发布：
++
++```bash
++./gradlew :qx_hybrid:publishReleasePublicationToGitLabRepository \
++  -PQX_HYBRID_VERSION=0.1.8 \
++  -PMAVEN_REPOSITORY_NAME=GitLab \
++  -PMAVEN_REPOSITORY_URL=https://paas-gitlab.mychery.com/api/v4/projects/<PROJECT_ID>/packages/maven \
++  -PMAVEN_USERNAME=your_gitlab_username \
++  -PMAVEN_PASSWORD=your_access_token
++```
++
++如果 GitLab 只能在公司电脑访问，就在公司电脑执行手动发布或推 tag 触发 CI。
+diff --git a/qx_hybrid/build.gradle b/qx_hybrid/build.gradle
+index ed3945b..2276503 100644
+--- a/qx_hybrid/build.gradle
++++ b/qx_hybrid/build.gradle
+@@ -1,9 +1,17 @@
+ plugins {
+     alias(libs.plugins.android.library)
+     alias(libs.plugins.kotlin.android)
+-    id 'maven-publish' //用于发布Maven依赖
++    id 'maven-publish'
+ }
+ 
++def qxHybridGroupId = findProperty("QX_HYBRID_GROUP_ID") ?: "com.energy.sdk"
++def qxHybridArtifactId = findProperty("QX_HYBRID_ARTIFACT_ID") ?: "qx-hybrid"
++def qxHybridVersion = findProperty("QX_HYBRID_VERSION") ?: "0.1.8"
++def mavenRepositoryUrl = findProperty("MAVEN_REPOSITORY_URL") ?: System.getenv("MAVEN_REPOSITORY_URL")
++def mavenRepositoryName = findProperty("MAVEN_REPOSITORY_NAME") ?: "remoteMaven"
++def mavenUsername = findProperty("MAVEN_USERNAME") ?: System.getenv("MAVEN_USERNAME")
++def mavenPassword = findProperty("MAVEN_PASSWORD") ?: System.getenv("MAVEN_PASSWORD")
++
+ android {
+     namespace 'com.energy.qx_hybrid'
+ 
+@@ -74,10 +82,31 @@ afterEvaluate {
+             release(MavenPublication) {
+                 // 关联打包产物：发布release版本的aar
+                 from components.release
+-                groupId = "com.energy.sdk"
+-                artifactId = "qx-hybrid"
+-                version = "0.1.0"
++                groupId = qxHybridGroupId
++                artifactId = qxHybridArtifactId
++                version = qxHybridVersion
++
++                pom {
++                    name = "QX Hybrid"
++                    description = "QX Hybrid Android SDK"
++                }
++            }
++        }
++
++        repositories {
++            if (mavenRepositoryUrl) {
++                maven {
++                    name = mavenRepositoryName
++                    url = uri(mavenRepositoryUrl)
++
++                    if (mavenUsername && mavenPassword) {
++                        credentials {
++                            username = mavenUsername
++                            password = mavenPassword
++                        }
++                    }
++                }
+             }
+         }
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/settings.gradle b/settings.gradle
+index 539bb75..50894d5 100644
+--- a/settings.gradle
++++ b/settings.gradle
+@@ -1,5 +1,10 @@
+ pluginManagement {
+     repositories {
++        maven { url 'https://maven.aliyun.com/repository/central' }
++        maven { url 'https://maven.aliyun.com/repository/google' }
++        maven { url 'https://maven.aliyun.com/repository/public' }
++        maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
++        maven { url 'https://developer.huawei.com/repo/' }
+         google {
+             content {
+                 includeGroupByRegex("com\\.android.*")
+@@ -15,6 +20,11 @@ pluginManagement {
+ dependencyResolutionManagement {
+     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+     repositories {
++        maven { url 'https://maven.aliyun.com/repository/central' }
++        maven { url 'https://maven.aliyun.com/repository/google' }
++        maven { url 'https://maven.aliyun.com/repository/public' }
++        maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
++        maven { url 'https://developer.huawei.com/repo/' }
+         google()
+         mavenCentral()
+         // 添加JitPack仓库以支持第三方库
