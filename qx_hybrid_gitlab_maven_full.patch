@@ -1,10 +1,10 @@
 diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
 new file mode 100644
-index 0000000..8af5369
+index 0000000..41db8b5
 --- /dev/null
 +++ b/.gitlab-ci.yml
 @@ -0,0 +1,34 @@
-+image: cimg/android:2025.06.1
++image: cimg/android:2026.03.1
 +
 +stages:
 +  - verify

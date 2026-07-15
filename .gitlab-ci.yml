@@ -1,4 +1,6 @@
-image: cimg/android:2025.06.1
+# 经由 GitLab 自带的 Dependency Proxy 代理拉取 Docker Hub,绕开匿名限流 / 集群出口墙。
+# 注意:本 Runner 的 allowed_pull_policies 为空,禁止在 CI 里指定 pull_policy,故这里不写。
+image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/cimg/android:2026.03.1
 
 stages:
   - verify

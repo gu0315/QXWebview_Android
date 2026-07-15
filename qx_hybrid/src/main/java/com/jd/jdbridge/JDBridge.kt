@@ -400,15 +400,18 @@ class JDBridge(val webView: IBridgeWebView) : IProxy {
                 logD("_callNative -> Native plugin returns false for action = $action")
                 respondToWeb(callbackId, STATUS_NOT_FOUND, "", MSG_ACTION_NOT_FOUND)
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // 捕获 Throwable 而非仅 Exception：混淆/缺类会抛 Error 系（如 NoSuchMethodError、
+            // NoClassDefFoundError），只 catch Exception 会让它逃逸到 WebView，JS 端只看到含糊的
+            // "Java exception was raised during method invocation"，无法定位。带上类名便于排查。
             respondToWeb(
                 callbackId,
                 STATUS_EXCEPTION,
                 null,
-                "$MSG_EXCEPTION, e: ${e.message}"
+                "$MSG_EXCEPTION, e: ${e.javaClass.name}: ${e.message}"
             )
             logE(e)
-            alertDebugMsg("CallNative Error, err = ${e.message}")
+            alertDebugMsg("CallNative Error, err = ${e.javaClass.name}: ${e.message}")
         }
     }
 
@@ -543,7 +546,7 @@ class JDBridge(val webView: IBridgeWebView) : IProxy {
         }
     }
 
-    private fun logE(e: Exception) {
+    private fun logE(e: Throwable) {
         if (JDBridgeManager.webDebug) {
             Log.e(TAG, e.message, e)
         }

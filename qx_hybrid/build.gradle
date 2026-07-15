@@ -6,7 +6,7 @@ plugins {
 
 def qxHybridGroupId = findProperty("QX_HYBRID_GROUP_ID") ?: "com.energy.sdk"
 def qxHybridArtifactId = findProperty("QX_HYBRID_ARTIFACT_ID") ?: "qx-hybrid"
-def qxHybridVersion = findProperty("QX_HYBRID_VERSION") ?: "0.1.8"
+def qxHybridVersion = findProperty("QX_HYBRID_VERSION") ?: "0.1.9"
 def mavenRepositoryUrl = findProperty("MAVEN_REPOSITORY_URL") ?: System.getenv("MAVEN_REPOSITORY_URL")
 def mavenRepositoryName = findProperty("MAVEN_REPOSITORY_NAME") ?: "remoteMaven"
 def mavenUsername = findProperty("MAVEN_USERNAME") ?: System.getenv("MAVEN_USERNAME")
