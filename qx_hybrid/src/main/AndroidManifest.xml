@@ -29,6 +29,12 @@
         <package android:name="com.baidu.BaiduMap" />
         <package android:name="com.tencent.map" />
         <package android:name="com.google.android.apps.maps" />
+        <!-- openUrl：唤起微信/微信小程序（weixin://dl/business/?appid=...） -->
+        <package android:name="com.tencent.mm" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="weixin" />
+        </intent>
 
         <!-- openUrl：浏览器 / 拨号 / 邮件 等 ACTION_VIEW 场景的包可见性 -->
         <intent>

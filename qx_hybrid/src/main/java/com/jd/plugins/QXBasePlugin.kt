@@ -3,6 +3,7 @@ package com.jd.plugins
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -1131,16 +1132,18 @@ class QXBasePlugin : IBridgePlugin {
 
         val launch: () -> Unit = launchBlock@{
             try {
-                if (intent.resolveActivity(launchContext.packageManager) == null) {
-                    callback?.onError(QXBridgeError.unsupported("当前设备无法打开此 URL"))
-                    return@launchBlock
-                }
+                // 注意：不要用 resolveActivity 预检。targetSdk >= 30 时包可见性会让未在
+                // <queries> 声明的三方 scheme（weixin://、alipays:// 等）查询返回 null，
+                // 但隐式启动本身不受限制，因此直接 startActivity，由异常判定是否可打开。
                 launchContext.startActivity(intent)
                 callback?.onSuccess(JSONObject().apply {
                     put("code", 0)
                     put("msg", "打开成功")
                     if (finalUrl.isNotEmpty()) put("url", finalUrl)
                 })
+            } catch (e: ActivityNotFoundException) {
+                Log.e(TAG, "无应用可处理该 URL: $finalUrl", e)
+                callback?.onError(QXBridgeError.unsupported("当前设备无法打开此 URL"))
             } catch (e: Exception) {
                 Log.e(TAG, "打开 URL 失败", e)
                 callback?.onError(QXBridgeError.failure("打开失败: ${e.message ?: "未知异常"}"))
