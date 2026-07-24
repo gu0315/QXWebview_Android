@@ -1,167 +1,129 @@
 # QX Hybrid Android Maven 发布
 
-## 推荐方案：GitLab Package Registry
+## 方案:GitHub 文件式 Maven 仓库
 
-公司有 GitLab 时，不需要单独搭 Maven 私服。GitLab 项目自带 Maven Package Registry，可以发布 Android AAR。
-
-当前仓库地址：
+SDK 的 Maven 产物托管在独立的 GitHub 仓库,使用方直接用 raw 地址当 Maven 源,不需要 Maven 私服,也不需要任何 token。
 
 ```text
-https://paas-gitlab.mychery.com/20238591/QXWebview_Android
+仓库:  https://github.com/gu0315/qx-hybrid-maven
+raw：  https://raw.githubusercontent.com/gu0315/qx-hybrid-maven/main
+本机克隆: ~/qx-hybrid-maven
 ```
 
-CI 发布时会自动使用 GitLab 提供的 `$CI_PROJECT_ID`，不需要手动填写项目 ID。
-
-默认发布坐标：
+发布坐标:
 
 ```gradle
-com.energy.sdk:qx-hybrid:0.1.8
+com.energy.sdk:qx-hybrid:<版本号>
 ```
 
-## 版本号
+版本号通过 Gradle 参数 `-PQX_HYBRID_VERSION` 传入,`qx_hybrid/build.gradle` 里的默认值只是兜底。
 
-默认版本是 `0.1.8`，也可以通过 Gradle 参数覆盖：
+## 发布新版本
+
+本机克隆里有一键脚本 `~/qx-hybrid-maven/publish.sh`,流程是「构建 → 发布到本地仓库目录 → git 提交 → push 到 GitHub」:
 
 ```bash
-./gradlew :qx_hybrid:publishToMavenLocal -PQX_HYBRID_VERSION=0.1.9
+cd ~/qx-hybrid-maven && ./publish.sh 0.1.11
 ```
 
-GitLab CI 发布时会自动使用 tag 作为版本号：
+脚本会拦截已发布过的版本号,确认要覆盖时加 `-f`:
 
 ```bash
-git tag 0.1.8
-git push origin 0.1.8
+cd ~/qx-hybrid-maven && ./publish.sh 0.1.9 -f
 ```
 
-## GitLab CI 自动发布
-
-仓库根目录已增加 `.gitlab-ci.yml`。
-
-普通分支 push 会执行：
+不用脚本时,等价的手动流程是:
 
 ```bash
-./gradlew :qx_hybrid:assembleRelease
+cd /Users/guqianxiang/Desktop/chery/App/chery_android && ./gradlew :qx_hybrid:publishReleasePublicationToRemoteMavenRepository -PMAVEN_REPOSITORY_URL="file://$HOME/qx-hybrid-maven" -PQX_HYBRID_VERSION=0.1.11
 ```
-
-tag push 会发布到当前 GitLab 项目的 Maven Package Registry：
 
 ```bash
-./gradlew :qx_hybrid:publishReleasePublicationToGitLabRepository \
-  -PQX_HYBRID_VERSION="$CI_COMMIT_TAG" \
-  -PMAVEN_REPOSITORY_NAME=GitLab \
-  -PMAVEN_REPOSITORY_URL="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/maven" \
-  -PMAVEN_USERNAME=gitlab-ci-token \
-  -PMAVEN_PASSWORD="$CI_JOB_TOKEN"
+cd ~/qx-hybrid-maven && git add com/ && git commit -m "release qx-hybrid 0.1.11" && git push origin main
 ```
 
-发布成功后，包地址格式是：
+一次发多个版本时,**最后发最高的那个版本**,否则 `maven-metadata.xml` 的 `<latest>` / `<release>` 会被写成低版本。
 
-```text
-https://paas-gitlab.mychery.com/api/v4/projects/<PROJECT_ID>/packages/maven
+## 覆盖已发布的版本
+
+文件式仓库直接覆盖 `com/energy/sdk/qx-hybrid/<版本号>/` 下的 aar、sources.jar、module 和各自的校验和文件即可,pom 一般不变。
+
+但使用方的 Gradle 缓存不会自动失效,**必须同时通知对方刷新**:
+
+```bash
+./gradlew --refresh-dependencies
 ```
 
-`PROJECT_ID` 在 GitLab 项目首页或 Settings 页面可以看到。
+或者直接删缓存目录:
 
-如果暂时不知道数字 `PROJECT_ID`，也可以尝试使用 URL 编码后的项目路径：
-
-```text
-https://paas-gitlab.mychery.com/api/v4/projects/20238591%2FQXWebview_Android/packages/maven
+```bash
+rm -rf ~/.gradle/caches/modules-2/files-2.1/com.energy.sdk
 ```
 
 ## 宿主工程接入
 
-在宿主工程 `settings.gradle` 增加 GitLab Maven 仓库：
+在使用方工程的 `settings.gradle`:
 
 ```gradle
-def gitLabMavenUsername = providers.gradleProperty("GITLAB_MAVEN_USERNAME")
-        .orElse(providers.environmentVariable("GITLAB_MAVEN_USERNAME"))
-        .orNull
-def gitLabMavenToken = providers.gradleProperty("GITLAB_MAVEN_TOKEN")
-        .orElse(providers.environmentVariable("GITLAB_MAVEN_TOKEN"))
-        .orNull
-
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        // ① 本 SDK 仓库
+        maven { url 'https://raw.githubusercontent.com/gu0315/qx-hybrid-maven/main' }
+
+        // ② 传递依赖来源，必须有
         google()
         mavenCentral()
-        maven { url 'https://jitpack.io' }
-        maven {
-            url = uri("https://paas-gitlab.mychery.com/api/v4/projects/<PROJECT_ID>/packages/maven")
-            credentials(HttpHeaderCredentials) {
-                name = "Private-Token"
-                value = gitLabMavenToken
-            }
-            authentication {
-                header(HttpHeaderAuthentication)
-            }
-        }
+        maven { url 'https://jitpack.io' }   // Android-BLE(com.github.aicareles)在这里
+        // 国内网络可加阿里云镜像加速：
+        // maven { url 'https://maven.aliyun.com/repository/public' }
     }
 }
 ```
 
-如果公司 GitLab 不支持 Header Token，也可以用用户名和 Token：
+在 app 模块的 `build.gradle`:
 
 ```gradle
-maven {
-    url = uri("https://paas-gitlab.mychery.com/api/v4/projects/<PROJECT_ID>/packages/maven")
-    credentials {
-        username = gitLabMavenUsername
-        password = gitLabMavenToken
-    }
-}
+implementation 'com.energy.sdk:qx-hybrid:0.1.10'
 ```
 
-在宿主 app 的 `build.gradle` 引用：
-
-```gradle
-implementation 'com.energy.sdk:qx-hybrid:0.1.8'
-```
-
-建议把访问 token 放到宿主工程开发机的 `~/.gradle/gradle.properties`：
-
-```properties
-GITLAB_MAVEN_USERNAME=your_gitlab_username
-GITLAB_MAVEN_TOKEN=your_access_token
-```
+以下传递依赖会自动带入,不用手写:`androidx.appcompat`、`com.google.android.material`、
+`androidx.core:core-ktx`、`androidx.webkit:webkit`、`androidx.exifinterface`、
+`com.google.zxing:core`、`com.journeyapps:zxing-android-embedded`、
+`com.github.aicareles:Android-BLE`、`com.google.code.gson:gson`、`kotlin-stdlib`。
 
 ## 本地验证
 
-本机默认 Java 不是 17 时，先指定 Java 17：
+本机默认 Java 不是 17 时,先指定 Java 17:
 
 ```bash
 export JAVA_HOME=$(/usr/libexec/java_home -v 17)
 ```
 
-验证 AAR 构建：
+验证 AAR 构建:
 
 ```bash
 ./gradlew :qx_hybrid:assembleRelease
 ```
 
-验证 Maven 发布产物：
+验证 Maven 发布产物(落到 `~/.m2/repository/com/energy/sdk/qx-hybrid/<版本号>/`):
 
 ```bash
-./gradlew :qx_hybrid:publishToMavenLocal
+./gradlew :qx_hybrid:publishReleasePublicationToMavenLocal -PQX_HYBRID_VERSION=0.1.11
 ```
 
-生成的本地 Maven 路径：
+## 附:公司 GitLab 方案(当前未启用)
 
-```text
-~/.m2/repository/com/energy/sdk/qx-hybrid/<version>/
-```
+仓库里还留着 `.gitlab-ci.yml` 和根目录的 `publish-to-gitlab.sh`,是早期发到公司 GitLab Package Registry
+(`https://paas-gitlab.mychery.com`,project id `11853`)的方案。
 
-## 手动发布到 GitLab
-
-不走 CI 时，也可以手动发布：
+**注意:本工程的 `origin` 是 GitHub(`gu0315/QXWebview_Android`),没有配 gitlab remote,
+所以打 tag 推 origin 不会触发 `.gitlab-ci.yml` 的发布任务。** 要走 GitLab 只能在公司环境手动执行:
 
 ```bash
-./gradlew :qx_hybrid:publishReleasePublicationToGitLabRepository \
-  -PQX_HYBRID_VERSION=0.1.8 \
-  -PMAVEN_REPOSITORY_NAME=GitLab \
-  -PMAVEN_REPOSITORY_URL=https://paas-gitlab.mychery.com/api/v4/projects/<PROJECT_ID>/packages/maven \
-  -PMAVEN_USERNAME=your_gitlab_username \
-  -PMAVEN_PASSWORD=your_access_token
+export GITLAB_MAVEN_USER='<deploy-token 用户名>' && export GITLAB_MAVEN_TOKEN='<deploy-token>'
 ```
 
-如果 GitLab 只能在公司电脑访问，就在公司电脑执行手动发布或推 tag 触发 CI。
+```bash
+cd /Users/guqianxiang/Desktop/chery/App/chery_android && ./publish-to-gitlab.sh 0.1.11
+```
