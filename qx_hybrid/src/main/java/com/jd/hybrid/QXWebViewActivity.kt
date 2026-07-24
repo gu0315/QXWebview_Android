@@ -2,8 +2,11 @@ package com.jd.hybrid
 
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -15,6 +18,7 @@ import android.view.WindowInsetsController
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.EditText
@@ -22,6 +26,7 @@ import android.widget.FrameLayout
 import android.widget.ProgressBar
 import android.widget.RelativeLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
@@ -33,6 +38,7 @@ import com.jd.plugins.QXHostBridgePlugin
 import com.jd.plugins.QXLifecyclePlugin
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.URISyntaxException
 
 
 open class QXWebViewActivity : AppCompatActivity() {
@@ -200,6 +206,15 @@ open class QXWebViewActivity : AppCompatActivity() {
 
     private fun setupWebViewClient() {
         webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                return handleOverrideUrlLoading(request?.url?.toString())
+            }
+
+            @Deprecated("兼容 API < 24", ReplaceWith("shouldOverrideUrlLoading(view, request)"))
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                return handleOverrideUrlLoading(url)
+            }
+
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 showInitialLoading()
@@ -214,6 +229,78 @@ open class QXWebViewActivity : AppCompatActivity() {
                 hideInitialLoading()
             }
         }
+    }
+
+    /**
+     * 拦截 WebView 的 URL 跳转。不拦截的话，WebView 会把未知 scheme 当网页加载，
+     * 直接报 net::ERR_UNKNOWN_URL_SCHEME。
+     * - http / https：交回 WebView 自己加载
+     * - intent://：解析成 Intent 唤起目标 App，失败则回退 browser_fallback_url
+     * - 其余自定义 scheme（weixin://、alipays:// 等）：以 ACTION_VIEW 唤起
+     */
+    protected open fun handleOverrideUrlLoading(url: String?): Boolean {
+        if (url.isNullOrBlank()) return false
+        val scheme = try {
+            Uri.parse(url).scheme?.lowercase()
+        } catch (e: Exception) {
+            Log.w(TAG, "URL 解析失败: $url", e)
+            return false
+        }
+        if (scheme == null || scheme == "http" || scheme == "https") return false
+
+        return if (scheme == "intent") {
+            openIntentScheme(url)
+        } else {
+            startExternalActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)), url)
+        }
+    }
+
+    private fun openIntentScheme(url: String): Boolean {
+        val intent = try {
+            Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
+        } catch (e: URISyntaxException) {
+            Log.w(TAG, "intent:// 解析失败: $url", e)
+            return true
+        }
+        val fallbackUrl = intent.getStringExtra("browser_fallback_url")
+        // 网页构造的 intent 不允许指定组件，避免被拉起本 App 的未导出页面
+        intent.addCategory(Intent.CATEGORY_BROWSABLE)
+        intent.component = null
+        intent.selector = null
+
+        if (startExternalActivity(intent, url, notifyOnFailure = fallbackUrl.isNullOrBlank())) {
+            return true
+        }
+        if (!fallbackUrl.isNullOrBlank()) {
+            webView.loadUrl(fallbackUrl)
+        }
+        return true
+    }
+
+    private fun startExternalActivity(
+        intent: Intent,
+        url: String,
+        notifyOnFailure: Boolean = true
+    ): Boolean {
+        return try {
+            startActivity(intent)
+            true
+        } catch (e: ActivityNotFoundException) {
+            Log.w(TAG, "无应用可处理该 URL: $url", e)
+            if (notifyOnFailure) onExternalAppNotFound(url)
+            false
+        } catch (e: Exception) {
+            Log.e(TAG, "唤起外部应用失败: $url", e)
+            if (notifyOnFailure) onExternalAppNotFound(url)
+            false
+        }
+    }
+
+    /**
+     * 未找到可处理该 URL 的应用时的提示，宿主可覆写
+     */
+    protected open fun onExternalAppNotFound(url: String) {
+        Toast.makeText(this, "未安装可打开该链接的应用", Toast.LENGTH_SHORT).show()
     }
 
     private fun setupWebChromeClient() {
