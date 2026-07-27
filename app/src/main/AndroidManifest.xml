@@ -52,6 +52,12 @@
             android:exported="false"
             android:theme="@style/Theme.Chery_android" />
 
+        <!-- H5 通过 app://openFRConfirmPay 拉起的模拟确认支付页 -->
+        <activity
+            android:name=".FRConfirmPayActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Chery_android" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

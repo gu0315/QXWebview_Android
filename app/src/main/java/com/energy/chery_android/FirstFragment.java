@@ -23,7 +23,7 @@ import java.util.List;
 public class FirstFragment extends Fragment {
 
     private static final String BRIDGE_TEST_URL = "file:///android_asset/bridge_test.html";
-    private static final String DEFAULT_H5_URL = "http://172.20.10.4:3000/#/?token=4b7fcc7c-da9e-45cf-aa8c-773a0e90abbc";
+    private static final String DEFAULT_H5_URL = "http://172.20.10.4:3000/#/?token=7d0b9aab-73d7-4da6-be40-72784a19d036";
 
     private FragmentFirstBinding binding;
     private final List<View> vehicleRows = new ArrayList<>();
@@ -111,7 +111,7 @@ public class FirstFragment extends Fragment {
             url = DEFAULT_H5_URL;
         }
 
-        BridgeHostManager.init();
+        BridgeHostManager.init(requireContext());
         Intent intent = new Intent(requireContext(), QXWebViewActivity.class);
         intent.putExtra(QXWebViewActivity.EXTRA_URL, url);
         startActivity(intent);

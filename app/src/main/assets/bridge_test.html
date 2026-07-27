@@ -145,6 +145,7 @@
         <button onclick="getLocation()">定位</button>
         <button onclick="getDeviceInfo()">设备信息</button>
         <button class="alt" onclick="openPayment()">打开支付</button>
+        <button class="alt" onclick="openFRConfirmPay()">FR确认支付</button>
         <button class="danger" onclick="clearLog()">清空日志</button>
       </div>
       <div class="status">
@@ -222,6 +223,17 @@
         params: {
           amount: '88.88',
           orderId: `H5_ORDER_${Date.now()}`
+        }
+      }));
+    }
+
+    function openFRConfirmPay() {
+      runAction('FR确认支付', () => callNative('QXHostBridgePlugin', 'openPage', {
+        url: 'app://openFRConfirmPay',
+        params: {
+          orderSeq: `FR_ORDER_${Date.now()}`,
+          stationName: '测试充电站',
+          powerConnectorId: 'CONNECTOR_001'
         }
       }));
     }
