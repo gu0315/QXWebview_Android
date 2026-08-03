@@ -28,6 +28,7 @@ import android.widget.RelativeLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -206,6 +207,9 @@ open class QXWebViewActivity : AppCompatActivity() {
 
     private fun setupWebViewClient() {
         webView.webViewClient = object : WebViewClient() {
+            // 该重载与 WebResourceRequest 均为 API 21 引入，系统只会在 21+ 上回调；
+            // API < 21 走下面的 String 重载。
+            @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 return handleOverrideUrlLoading(request?.url?.toString())
             }
@@ -499,10 +503,10 @@ open class QXWebViewActivity : AppCompatActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, !enable)
         val resolvedStyle = resolveNavigationBarStyle()
 
-        if (enable) {
-            window.statusBarColor = Color.TRANSPARENT
-        } else {
-            window.statusBarColor = resolvedStyle.backgroundColor
+        // statusBarColor 是 API 21 才有的属性，API 19/20 无状态栏着色能力，直接跳过。
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            window.statusBarColor =
+                if (enable) Color.TRANSPARENT else resolvedStyle.backgroundColor
         }
         applyStatusBarAppearance(resolvedStyle, fallbackLightStatusBar = lightStatusBar)
         updateLayout()

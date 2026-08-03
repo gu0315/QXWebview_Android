@@ -78,11 +78,23 @@ class QXLocationManager private constructor(context: Context) {
     }
 
     // ===================== 对外入口 =====================
-    fun setCallback(callback: IBridgeCallback?) {
+    /**
+     * 定位状态（callback 列表 / bestLocation / 超时与收敛窗口）统一在主线程访问。
+     * bridge 的 execute 不保证在主线程，入口这里做一次归一，避免跨线程竞态与可见性问题。
+     */
+    private fun runOnMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block() else mainHandler.post(block)
+    }
+
+    fun setCallback(callback: IBridgeCallback?) = runOnMain {
         callback?.let { if (!locationCallbacks.contains(it)) locationCallbacks.add(it) }
     }
 
-    fun getLocation(activity: Activity, params: Map<String, Any>? = null) {
+    fun getLocation(activity: Activity, params: Map<String, Any>? = null) = runOnMain {
+        startRequest(activity, params)
+    }
+
+    private fun startRequest(activity: Activity, params: Map<String, Any>?) {
         // 已有定位在途：本次调用直接搭车复用同一结果（callback 已在 setCallback 里入列），
         // 避免重复启动定位并把前一个请求的状态清掉。
         if (isLocating) return
@@ -220,11 +232,11 @@ class QXLocationManager private constructor(context: Context) {
     }
 
     /** 宿主 App 若自行透传 Activity 的权限回调，可直接调用此方法。 */
-    fun onRequestPermissionsResult(requestCode: Int, grantResults: IntArray) {
-        if (requestCode != LocationConstants.PERMISSION_REQUEST_CODE) return
-        val granted = grantResults.any { it == PackageManager.PERMISSION_GRANTED }
-        if (granted) startLocation()
-        else handlePermissionDenied()
+    fun onRequestPermissionsResult(requestCode: Int, grantResults: IntArray) = runOnMain {
+        if (requestCode == LocationConstants.PERMISSION_REQUEST_CODE) {
+            val granted = grantResults.any { it == PackageManager.PERMISSION_GRANTED }
+            if (granted) startLocation() else handlePermissionDenied()
+        }
     }
 
     /**
@@ -451,7 +463,7 @@ class QXLocationManager private constructor(context: Context) {
         val needAddress = currentParams?.get("needAddress") as? Boolean
 
         isCallbackInvoked = true
-        release()
+        releaseInternal()
         if (needAddress == false) {
             saveCache(result)
             callbackSuccess(result)
@@ -697,7 +709,7 @@ class QXLocationManager private constructor(context: Context) {
     }
 
     private fun clear() {
-        release()
+        releaseInternal()
         // 上一笔请求可能留下未触发的权限监听（用户始终没理会弹框），这里一并清掉。
         ClosureRegistry.remove(LocationConstants.KEY_PERMISSION_CLOSURE)
         isCallbackInvoked = false
@@ -706,7 +718,9 @@ class QXLocationManager private constructor(context: Context) {
         timeout = LocationConstants.DEFAULT_TIMEOUT.toLong()
     }
 
-    fun release() {
+    fun release() = runOnMain { releaseInternal() }
+
+    private fun releaseInternal() {
         locationListeners.forEach {
             locationManager?.removeUpdates(it)
         }

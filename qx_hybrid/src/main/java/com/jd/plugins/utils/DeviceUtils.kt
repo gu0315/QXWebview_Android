@@ -130,7 +130,9 @@ object DeviceUtils {
      */
     fun getBottomSafeHeight(context: Context): Float {
         val appContext = context.applicationContext
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+        // Display#getCutout 是 API 29 才有的（DisplayCutout 类本身是 API 28），
+        // 守卫写成 P(28) 会在 Android 9 上抛 NoSuchMethodError。
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             return 0f
         }
         val windowManager = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager

@@ -30,6 +30,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.exifinterface.media.ExifInterface
@@ -270,8 +271,11 @@ class QRScannerActivity : AppCompatActivity() {
         backButton = ImageButton(this).apply {
             val backIcon = AppCompatResources.getDrawable(this@QRScannerActivity, AppCompatR.drawable.abc_ic_ab_back_material)
             backIcon?.let {
-                it.setTint(Color.WHITE)
-                setImageDrawable(it)
+                // Drawable#setTint 是 API 21 才有的，走 DrawableCompat 才能在 19/20 上同样着色。
+                // wrap 在 API < 21 返回的是包装后的新实例，必须用它而不是原 drawable。
+                val tinted = DrawableCompat.wrap(it).mutate()
+                DrawableCompat.setTint(tinted, Color.WHITE)
+                setImageDrawable(tinted)
             }
             setBackgroundColor(Color.TRANSPARENT)
             contentDescription = "返回"
