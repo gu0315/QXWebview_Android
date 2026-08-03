@@ -3,7 +3,6 @@ package com.jd.plugins.location
 import android.Manifest
 import android.app.Activity
 import android.content.Context
-import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.location.Address
@@ -11,19 +10,18 @@ import android.location.Geocoder
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
-import android.provider.Settings
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.google.gson.Gson
 import com.jd.jdbridge.base.IBridgeCallback
+import com.jd.plugins.ClosureRegistry
 import com.jd.plugins.utils.GCJ02Converter
+import org.json.JSONArray
 import org.json.JSONObject
 import java.lang.ref.WeakReference
 import java.util.Locale
@@ -34,7 +32,6 @@ class QXLocationManager private constructor(context: Context) {
     companion object {
         private const val TAG = "QXLocationManager"
         @Volatile private var INSTANCE: QXLocationManager? = null
-        private val gson by lazy { Gson() }
 
         fun getInstance(context: Context): QXLocationManager {
             return INSTANCE ?: synchronized(this) {
@@ -60,18 +57,20 @@ class QXLocationManager private constructor(context: Context) {
         context?.let { Geocoder(it, Locale.CHINA) }
     }
 
-    private var locationCallback: IBridgeCallback? = null
+    // 单例 + 单 callback 时，后来的定位请求会顶掉前一个的 callback，导致 H5 永久 pending；
+    // 这里改为回调列表：在途请求的所有调用方共享同一次定位结果。
+    private val locationCallbacks = mutableListOf<IBridgeCallback>()
+    private var isLocating = false
 
     private var isCallbackInvoked = false
     private var bestLocation: Location? = null
-    private var hasFreshLocation = false
 
     private var timeoutRunnable: Runnable? = null
+    private var convergeRunnable: Runnable? = null
 
     private var targetAccuracy = LocationConstants.DEFAULT_ACCURACY
     private var timeout = LocationConstants.DEFAULT_TIMEOUT.toLong()
 
-    private var activityRef: WeakReference<Activity>? = null
     private var currentParams: Map<String, Any>? = null
 
     private val sharedPrefs: SharedPreferences? by lazy {
@@ -80,19 +79,17 @@ class QXLocationManager private constructor(context: Context) {
 
     // ===================== 对外入口 =====================
     fun setCallback(callback: IBridgeCallback?) {
-        locationCallback = callback
-        isCallbackInvoked = false
+        callback?.let { if (!locationCallbacks.contains(it)) locationCallbacks.add(it) }
     }
 
     fun getLocation(activity: Activity, params: Map<String, Any>? = null) {
+        // 已有定位在途：本次调用直接搭车复用同一结果（callback 已在 setCallback 里入列），
+        // 避免重复启动定位并把前一个请求的状态清掉。
+        if (isLocating) return
+
         clear()
 
-        activityRef = WeakReference(activity)
         currentParams = params
-
-        // 每次请求都回到默认值，避免上一笔调用的严格参数串到下一笔请求。
-        targetAccuracy = LocationConstants.DEFAULT_ACCURACY
-        timeout = LocationConstants.DEFAULT_TIMEOUT.toLong()
 
         params?.let {
             targetAccuracy = maxOf(1, (it["accuracy"] as? Number)?.toInt() ?: targetAccuracy)
@@ -120,6 +117,43 @@ class QXLocationManager private constructor(context: Context) {
         return fine || coarse
     }
 
+    /** 是否授予了“精确位置”(FINE)。仅授予“粗略位置”(COARSE)时系统只返回被模糊化的坐标。 */
+    private fun hasPreciseLocation(): Boolean {
+        val ctx = context ?: return false
+        return ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /** 可接受的精度上限：精确定位收严到 300m；粗略定位放宽到公里级，避免一律判无效导致超时失败。 */
+    private fun maxAcceptableAccuracy(): Float =
+        if (hasPreciseLocation()) LocationConstants.FINE_MAX_ACCURACY else LocationConstants.COARSE_MAX_ACCURACY
+
+    /**
+     * 当前权限下真正可用的 provider。
+     * GPS_PROVIDER 强制要求 ACCESS_FINE_LOCATION，仅授予“粗略位置”时无论是取 lastKnown 还是
+     * requestLocationUpdates 都会抛 SecurityException，因此粗略模式必须完全不碰 GPS。
+     * FUSED_PROVIDER(API 31+) 接受粗略权限，作为无 NETWORK_PROVIDER 机型的兜底。
+     */
+    private fun availableProviders(): List<String> {
+        val providers = mutableListOf<String>()
+        if (hasPreciseLocation()) providers.add(LocationManager.GPS_PROVIDER)
+        providers.add(LocationManager.NETWORK_PROVIDER)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            providers.add(LocationConstants.FUSED_PROVIDER)
+        }
+        return providers.filter { isProviderUsable(it) }
+    }
+
+    /** provider 是否存在且已开启；未知 provider / 无权限一律视为不可用，避免异常打断整个定位流程。 */
+    private fun isProviderUsable(provider: String): Boolean {
+        val lm = locationManager ?: return false
+        return try {
+            lm.allProviders.contains(provider) && lm.isProviderEnabled(provider)
+        } catch (e: Exception) {
+            Log.w(TAG, "provider $provider unavailable: $e")
+            false
+        }
+    }
+
     /**
      * 判断定位权限是否已被永久拒绝（用户勾选过"不再询问"或系统策略禁止）。
      * 判定条件：曾经请求过一次，且当前 shouldShowRequestPermissionRationale 返回 false。
@@ -138,6 +172,7 @@ class QXLocationManager private constructor(context: Context) {
 
     private fun requestPermission(activity: Activity) {
         sharedPrefs?.edit()?.putBoolean(LocationConstants.KEY_PERMISSION_REQUESTED, true)?.apply()
+        registerPermissionClosure()
         ActivityCompat.requestPermissions(
             activity,
             arrayOf(
@@ -148,6 +183,43 @@ class QXLocationManager private constructor(context: Context) {
         )
     }
 
+    /**
+     * 接收 QXWebViewActivity 透传的系统权限回调（与相机权限同一套 ClosureRegistry 机制）。
+     * 不注册的话，用户在权限弹框点“允许”之后定位流程不会继续，H5 会一直等不到回调。
+     */
+    private fun registerPermissionClosure() {
+        ClosureRegistry.register(LocationConstants.KEY_PERMISSION_CLOSURE, object : IBridgeCallback {
+            override fun onSuccess(result: Any?) {
+                val json = try {
+                    JSONObject(result?.toString() ?: "")
+                } catch (e: Exception) {
+                    Log.w(TAG, "权限回调解析失败: $e")
+                    null
+                }
+                if (json == null) {
+                    handlePermissionDenied()
+                    return
+                }
+                // ClosureRegistry.invoke 是一次性的：非本次定位的权限回调要原样重新注册，
+                // 否则会把自己的监听消耗掉。
+                if (json.optInt("requestCode", -1) != LocationConstants.PERMISSION_REQUEST_CODE) {
+                    ClosureRegistry.register(LocationConstants.KEY_PERMISSION_CLOSURE, this)
+                    return
+                }
+                val grantResults = json.optJSONArray("grantResults") ?: JSONArray()
+                val granted = (0 until grantResults.length()).any {
+                    grantResults.optInt(it, PackageManager.PERMISSION_DENIED) == PackageManager.PERMISSION_GRANTED
+                }
+                if (granted) startLocation() else handlePermissionDenied()
+            }
+
+            override fun onError(errMsg: String?) {
+                handlePermissionDenied()
+            }
+        })
+    }
+
+    /** 宿主 App 若自行透传 Activity 的权限回调，可直接调用此方法。 */
     fun onRequestPermissionsResult(requestCode: Int, grantResults: IntArray) {
         if (requestCode != LocationConstants.PERMISSION_REQUEST_CODE) return
         val granted = grantResults.any { it == PackageManager.PERMISSION_GRANTED }
@@ -167,6 +239,7 @@ class QXLocationManager private constructor(context: Context) {
             hasPermission = false,
             isEnable = isLocationEnabled()
         ).apply {
+            put("code", LocationConstants.ERROR_PERMISSION_DENIED)
             put("msg", LocationConstants.PERMISSION_DENIED_MSG)
         }
         callbackSuccess(result)
@@ -174,18 +247,39 @@ class QXLocationManager private constructor(context: Context) {
 
     // ===================== 定位主流程 =====================
     private fun startLocation() {
+        isLocating = true
+
         if (!isLocationEnabled()) {
             callbackError(LocationConstants.ERROR_LOCATION_SERVICE_DISABLED, LocationConstants.LOCATION_SERVICE_DISABLED_MSG)
             return
         }
 
+        // 仅授予“粗略位置”时，系统只返回模糊坐标(数百米~数公里)，按精确门槛会一直超时失败；
+        // 这里放宽“可接受/可返回”的精度门槛，保证粗略模式也能返回一个坐标(带 preciseLocation=false 标记)。
+        if (!hasPreciseLocation()) {
+            targetAccuracy = maxOf(targetAccuracy, LocationConstants.COARSE_TARGET_ACCURACY)
+        }
+
         tryReturnLastKnown()
+
+        val providers = availableProviders()
+        if (providers.isEmpty()) {
+            // 没有任何可用 provider（如粗略权限 + 无网络定位服务的机型）：
+            // 有预热点就直接返回，否则按定位服务不可用失败，不必空等一次超时。
+            val fallback = bestLocation
+            if (fallback != null) processLocation(fallback)
+            else callbackError(
+                LocationConstants.ERROR_LOCATION_SERVICE_DISABLED,
+                LocationConstants.LOCATION_SERVICE_DISABLED_MSG
+            )
+            return
+        }
 
         refreshAGPS()
 
         startTimeout()
 
-        startParallelRequest()
+        startParallelRequest(providers)
     }
 
     /**
@@ -193,15 +287,14 @@ class QXLocationManager private constructor(context: Context) {
      * 但不直接回调，避免前端总是先收到 locationType=cache。
      */
     private fun tryReturnLastKnown() {
-        val gps = locationManager?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-        val net = locationManager?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-
-        val best = listOfNotNull(gps, net)
+        val best = availableProviders()
+            .mapNotNull { safeLastKnownLocation(it) }
             .filter { isValidLocation(it) }
             // 临时结果优先“先给坐标”，允许精度比正式门槛稍宽一些，最终结果仍由实时定位兜底。
+            // 弱信号下放宽时效与精度上限，让超时时更容易兜到 lastKnown，而不是直接判失败。
             .filter {
-                System.currentTimeMillis() - it.time < TimeUnit.SECONDS.toMillis(120) &&
-                        it.accuracy <= maxOf(targetAccuracy, 80)
+                System.currentTimeMillis() - it.time < TimeUnit.MINUTES.toMillis(5) &&
+                        it.accuracy <= maxOf(targetAccuracy, 150)
             }
             .maxByOrNull { providerWeight(it) }
 
@@ -212,26 +305,35 @@ class QXLocationManager private constructor(context: Context) {
         }
     }
 
-    private fun startParallelRequest() {
+    private fun safeLastKnownLocation(provider: String): Location? {
+        return try {
+            locationManager?.getLastKnownLocation(provider)
+        } catch (e: Exception) {
+            Log.w(TAG, "getLastKnownLocation($provider) failed: $e")
+            null
+        }
+    }
+
+    private fun startParallelRequest(providers: List<String>) {
         val lm = locationManager ?: return
 
-        listOf(
-            LocationManager.GPS_PROVIDER,
-            LocationManager.NETWORK_PROVIDER
-        ).forEach { provider ->
-            if (!lm.isProviderEnabled(provider)) return@forEach
-
+        providers.forEach { provider ->
             val listener = createListener()
-            locationListeners.add(listener)
-
-            // minTime/minDistance 用来过滤高频无效回调；Looper 复用调用方线程。
-            lm.requestLocationUpdates(
-                provider,
-                500L,
-                0f,
-                listener,
-                Looper.myLooper()
-            )
+            // 单个 provider 注册失败（权限不足 / ROM 不支持）不应影响其它 provider。
+            try {
+                // minTime/minDistance 用来过滤高频无效回调；
+                // 统一在主线程回调，与超时/收敛窗口的 Handler 保持同一线程，避免竞态。
+                lm.requestLocationUpdates(
+                    provider,
+                    500L,
+                    0f,
+                    listener,
+                    Looper.getMainLooper()
+                )
+                locationListeners.add(listener)
+            } catch (e: Exception) {
+                Log.w(TAG, "requestLocationUpdates($provider) failed: $e")
+            }
         }
     }
 
@@ -240,14 +342,21 @@ class QXLocationManager private constructor(context: Context) {
             override fun onLocationChanged(location: Location) {
                 if (!isValidLocation(location)) return
 
-                hasFreshLocation = true
                 if (isBetterLocation(location, bestLocation)) {
                     bestLocation = location
                 }
+                val best = bestLocation ?: return
 
-                // 统一按目标精度回调，避免 GPS 初始漂移点过早返回，导致 street 落到邻近道路。
-                if (location.accuracy <= targetAccuracy) {
-                    processLocation(location)
+                // 已达理想精度：直接返回最优点，无需再等收敛窗口。
+                if (best.accuracy <= LocationConstants.PREFERRED_ACCURACY) {
+                    processLocation(best)
+                    return
+                }
+
+                // 达到可接受精度：不锁定第一个粗点，开一个短收敛窗口，
+                // 让 GPS 精度进一步收敛后回调窗口内最优点，避免过早返回导致坐标偏。
+                if (best.accuracy <= targetAccuracy) {
+                    startConvergeWindow()
                 }
             }
 
@@ -259,10 +368,19 @@ class QXLocationManager private constructor(context: Context) {
 
     // ===================== 选点 & 坐标系 =====================
     /**
-     * 最优坐标判定优先级：GPS > 网络；同源比精度；跨源允许 50m 以内的精度差；最后比时间。
+     * 最优坐标判定优先级：明显更新的坐标 > GPS > 网络；同源比精度；跨源允许 50m 以内的精度差；最后比时间。
      */
     private fun isBetterLocation(newLoc: Location, oldLoc: Location?): Boolean {
         if (oldLoc == null) return true
+
+        // 时效优先：老点可能是几分钟前的 lastKnown，车载移动场景下已明显偏离当前位置，
+        // 只要新点精度没有差太多就应该取代它。
+        val timeDelta = newLoc.time - oldLoc.time
+        if (timeDelta > LocationConstants.SIGNIFICANT_TIME_DELTA) {
+            if (newLoc.accuracy <= oldLoc.accuracy + LocationConstants.STALE_ACCURACY_TOLERANCE) return true
+        } else if (timeDelta < -LocationConstants.SIGNIFICANT_TIME_DELTA) {
+            return false
+        }
 
         val newIsGps = newLoc.provider == LocationManager.GPS_PROVIDER
         val oldIsGps = oldLoc.provider == LocationManager.GPS_PROVIDER
@@ -283,6 +401,7 @@ class QXLocationManager private constructor(context: Context) {
     private fun providerWeight(loc: Location): Int {
         return when (loc.provider) {
             LocationManager.GPS_PROVIDER -> 10
+            LocationConstants.FUSED_PROVIDER -> 5
             LocationManager.NETWORK_PROVIDER -> 2
             else -> 1
         }
@@ -318,6 +437,7 @@ class QXLocationManager private constructor(context: Context) {
             put("gcoord", "GCJ02")
             put("hasPermission", true)
             put("isEnable", true)
+            put("preciseLocation", hasPreciseLocation())
             put("locationType", "new")
             // 行政区字段先占位，逆地理回填后再回调，保证字段结构始终一致。
             put("state", "")
@@ -338,10 +458,21 @@ class QXLocationManager private constructor(context: Context) {
             return
         }
 
+        // 逆地理编码可能因网络/服务异常一直不回调，这里加超时兜底：
+        // 到点就先把坐标发出去（地址字段留空），保证 H5 一定能收到结果。
+        var addressEmitted = false
+        val emit = { address: Address? ->
+            if (!addressEmitted) {
+                addressEmitted = true
+                fillAddress(result, address, includeStreet = needAddress == true)
+                saveCache(result)
+                callbackSuccess(result)
+            }
+        }
+        mainHandler.postDelayed({ emit(null) }, LocationConstants.GEOCODE_TIMEOUT.toLong())
         reverseGeocodeAsync(location.latitude, location.longitude) { address ->
-            fillAddress(result, address, includeStreet = needAddress == true)
-            saveCache(result)
-            callbackSuccess(result)
+            // 逆地理可能回在 worker 线程，统一切回主线程，保证 addressEmitted 只在单线程访问。
+            mainHandler.post { emit(address) }
         }
     }
 
@@ -416,6 +547,7 @@ class QXLocationManager private constructor(context: Context) {
             put("gcoord", "GCJ02")
             put("hasPermission", hasPermission)
             put("isEnable", isEnable)
+            put("preciseLocation", hasPreciseLocation())
             put("locationType", locationType)
             put("state", "")
             put("city", "")
@@ -429,7 +561,7 @@ class QXLocationManager private constructor(context: Context) {
     /**
      * 有效坐标标准：
      *  - 非 (0,0) 空坐标；
-     *  - 精度在 (0, 300m] 之间，避免返回极度模糊的定位；
+     *  - 精度在 (0, 精度上限] 之间（精确定位 300m，粗略定位放宽到公里级）；
      *  - 时间戳不超过 5 分钟，避免使用陈旧坐标。
      */
     private fun isValidLocation(loc: Location?): Boolean {
@@ -437,14 +569,16 @@ class QXLocationManager private constructor(context: Context) {
                 loc.latitude != 0.0 &&
                 loc.longitude != 0.0 &&
                 loc.accuracy > 0f &&
-                loc.accuracy <= 300f &&
+                loc.accuracy <= maxAcceptableAccuracy() &&
                 System.currentTimeMillis() - loc.time < TimeUnit.MINUTES.toMillis(5)
     }
 
+    /** 走 isProviderUsable 而非直接 isProviderEnabled：部分机型不存在某个 provider 时后者会抛异常。 */
     private fun isLocationEnabled(): Boolean {
-        val lm = locationManager ?: return false
-        return lm.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
-                lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        return isProviderUsable(LocationManager.GPS_PROVIDER) ||
+                isProviderUsable(LocationManager.NETWORK_PROVIDER) ||
+                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                        isProviderUsable(LocationConstants.FUSED_PROVIDER))
     }
 
     /**
@@ -452,6 +586,8 @@ class QXLocationManager private constructor(context: Context) {
      * 这些 extra command 只有部分 ROM 支持，调用失败直接吞掉即可。
      */
     private fun refreshAGPS() {
+        // 无精确权限时不可访问 GPS provider，直接跳过。
+        if (!hasPreciseLocation()) return
         try {
             val lm = locationManager ?: return
             lm.sendExtraCommand(LocationManager.GPS_PROVIDER, "force_xtra_injection", null)
@@ -464,13 +600,30 @@ class QXLocationManager private constructor(context: Context) {
 
     private fun startTimeout() {
         timeoutRunnable = Runnable {
-            if (hasFreshLocation) bestLocation?.let {
-                processLocation(it)
+            // 超时兜底优先用已有候选点：既包含实时最优点，也包含预热的 lastKnown，
+            // 只有完全没有任何候选点时才回落到本地缓存。
+            val fallback = bestLocation
+            if (fallback != null) {
+                processLocation(fallback)
             } else {
                 readCache()
             }
         }
         mainHandler.postDelayed(timeoutRunnable!!, timeout)
+    }
+
+    /**
+     * 收敛窗口：拿到第一个达到可接受精度的点后不立即返回，
+     * 再等一小段时间让 GPS 精度收敛，窗口结束时回调期间的最优点。
+     * 若期间精度已达理想值，会在 onLocationChanged 里提前返回。
+     */
+    private fun startConvergeWindow() {
+        if (convergeRunnable != null) return
+        convergeRunnable = Runnable {
+            convergeRunnable = null
+            bestLocation?.let { processLocation(it) }
+        }
+        mainHandler.postDelayed(convergeRunnable!!, LocationConstants.CONVERGE_WINDOW.toLong())
     }
 
     private fun saveCache(json: JSONObject) {
@@ -479,7 +632,7 @@ class QXLocationManager private constructor(context: Context) {
 
     /**
      * 超时兜底：读取本地缓存。
-     * 缓存必须同时满足「5 分钟内」+「精度 ≤ 100m」才返回，否则按超时失败处理。
+     * 缓存必须同时满足「5 分钟内」+「精度不超过当前权限下的可接受上限」才返回，否则按超时失败处理。
      */
     private fun readCache() {
         val cacheStr = sharedPrefs?.getString(LocationConstants.SCC_LOCATION_POSITIONING_CACHE, null)
@@ -492,10 +645,11 @@ class QXLocationManager private constructor(context: Context) {
             // 兼容历史缓存：timestamp 可能是 Long，也可能是字符串。
             val cacheTime = cache.optLong("timestamp", cache.optString("timestamp", "0").toLongOrNull() ?: 0)
             val cacheAccuracy = cache.optDouble("accuracy", 300.0)
-            if (System.currentTimeMillis() - cacheTime < TimeUnit.MINUTES.toMillis(5) && cacheAccuracy <= 100) {
+            if (System.currentTimeMillis() - cacheTime < TimeUnit.MINUTES.toMillis(5) && cacheAccuracy <= maxAcceptableAccuracy().toDouble()) {
                 cache.put("locationType", "cache")
                 cache.put("hasPermission", hasLocationPermission())
                 cache.put("isEnable", isLocationEnabled())
+                cache.put("preciseLocation", hasPreciseLocation())
                 if (isCallbackInvoked) return
                 isCallbackInvoked = true
                 callbackSuccess(cache)
@@ -507,10 +661,21 @@ class QXLocationManager private constructor(context: Context) {
         }
     }
 
+    /**
+     * 统一出口：把结果分发给本次定位的所有调用方，并结束在途状态。
+     * 单个 callback 抛异常不影响其它调用方。
+     */
     private fun callbackSuccess(obj: JSONObject) {
-        try {
-            locationCallback?.onSuccess(obj)
-        } catch (_: Exception) {}
+        val callbacks = locationCallbacks.toList()
+        locationCallbacks.clear()
+        isLocating = false
+        callbacks.forEach {
+            try {
+                it.onSuccess(obj)
+            } catch (e: Exception) {
+                Log.w(TAG, "location callback failed: $e")
+            }
+        }
     }
 
     /**
@@ -528,16 +693,15 @@ class QXLocationManager private constructor(context: Context) {
             put("code", code)
             put("msg", msg)
         }
-        try {
-            locationCallback?.onSuccess(failure)
-        } catch (_: Exception) {}
+        callbackSuccess(failure)
     }
 
     private fun clear() {
         release()
+        // 上一笔请求可能留下未触发的权限监听（用户始终没理会弹框），这里一并清掉。
+        ClosureRegistry.remove(LocationConstants.KEY_PERMISSION_CLOSURE)
         isCallbackInvoked = false
         bestLocation = null
-        hasFreshLocation = false
         targetAccuracy = LocationConstants.DEFAULT_ACCURACY
         timeout = LocationConstants.DEFAULT_TIMEOUT.toLong()
     }
@@ -549,6 +713,8 @@ class QXLocationManager private constructor(context: Context) {
         locationListeners.clear()
         timeoutRunnable?.let { mainHandler.removeCallbacks(it) }
         timeoutRunnable = null
+        convergeRunnable?.let { mainHandler.removeCallbacks(it) }
+        convergeRunnable = null
     }
 }
 
@@ -557,9 +723,31 @@ object LocationConstants {
     const val SCC_LOCATION_POSITIONING_CACHE = "SCCLocationPositioningCache"
     const val KEY_PERMISSION_REQUESTED = "hasRequestedLocationPermission"
 
+    // QXWebViewActivity 透传系统权限回调所用的 ClosureRegistry key（与相机权限共用同一事件源）。
+    const val KEY_PERMISSION_CLOSURE = "onRequestPermissionsResult"
+
     // 默认定位参数：优先首包速度；业务需要更高精度时可由前端显式传 accuracy/timeout。
+    // 原生 GPS 冷启动/室内首个有效点常需 10s 以上，默认给足 12s 兜底，业务可显式传 timeout 覆盖。
     const val DEFAULT_ACCURACY = 80
-    const val DEFAULT_TIMEOUT = 6000
+    // 达到该精度即视为理想结果，立即返回，不再等待收敛窗口。
+    const val PREFERRED_ACCURACY = 25
+    const val DEFAULT_TIMEOUT = 12000
+    // 收敛窗口：拿到可接受精度后再等这么久，让 GPS 精度进一步收敛，提升返回坐标的准确度。
+    const val CONVERGE_WINDOW = 2500
+    // 逆地理编码超时：到点仍未返回地址就先把坐标发出去，避免 H5 永久等待。
+    const val GEOCODE_TIMEOUT = 3000
+
+    // 选点时效：新坐标比候选点新超过该阈值时优先采用（容忍一定的精度回退），避免返回陈旧坐标。
+    const val SIGNIFICANT_TIME_DELTA = 30_000L
+    const val STALE_ACCURACY_TOLERANCE = 100f
+
+    // 精度上限：精确定位(FINE)门槛严；仅授“粗略位置”(COARSE)时系统只给模糊坐标，需放宽到公里级。
+    // LocationManager.FUSED_PROVIDER 常量为 API 31 新增，这里用字面量避免 InlinedApi 告警。
+    const val FUSED_PROVIDER = "fused"
+
+    const val FINE_MAX_ACCURACY = 300f      // 精确定位：有效坐标的精度上限
+    const val COARSE_MAX_ACCURACY = 5000f   // 粗略定位：有效坐标的精度上限
+    const val COARSE_TARGET_ACCURACY = 3000 // 粗略定位：达到即可返回的目标精度
 
     // 权限请求码
     const val PERMISSION_REQUEST_CODE = 1001

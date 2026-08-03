@@ -72,6 +72,8 @@ public final class BridgeHostManager {
                         String stationName = stationNameObj == null ? "" : stationNameObj.toString();  // 充电站名称
                         Object connectorObj = safeParams.get("powerConnectorId");
                         String powerConnectorId = connectorObj == null ? "" : connectorObj.toString(); // 充电桩编号
+
+                        Log.d(TAG, "拉起 FR 确认支付页: orderSeq=" + orderSeq + ", stationName=" + stationName + ", powerConnectorId=" + powerConnectorId);
                         // 真实宿主在这里拉起自己的 FR 下单页；Demo 用模拟页面代替：
                         // 「确认支付」-> code 0，「取消」/ 返回 -> code 1，拉不起页面 -> code 2
                         openFRConfirmPay(orderSeq, stationName, powerConnectorId, completion);
