@@ -64,6 +64,9 @@ class QXLocationManager private constructor(context: Context) {
 
     private var isCallbackInvoked = false
     private var bestLocation: Location? = null
+    // 降级候选：实时回调里“坐标非空但精度超门槛被 isValidLocation 丢掉”的点单独留一份，
+    // 只在超时兜底时使用。宁可返回一个粗坐标，也好过直接 1008 让业务拿不到位置。
+    private var degradedLocation: Location? = null
 
     private var timeoutRunnable: Runnable? = null
     private var convergeRunnable: Runnable? = null
@@ -147,7 +150,13 @@ class QXLocationManager private constructor(context: Context) {
      */
     private fun availableProviders(): List<String> {
         val providers = mutableListOf<String>()
-        if (hasPreciseLocation()) providers.add(LocationManager.GPS_PROVIDER)
+        if (hasPreciseLocation()) {
+            providers.add(LocationManager.GPS_PROVIDER)
+            // 被动定位：不主动耗电，只“蹭”其它 App(高德/微信/地图等)刚产生的定位。
+            // 国内无 GMS 机型室内自定位常失败，被动点往往是唯一能拿到的坐标。
+            // PASSIVE_PROVIDER 需要 ACCESS_FINE_LOCATION，故仅在精确权限下加入。
+            providers.add(LocationManager.PASSIVE_PROVIDER)
+        }
         providers.add(LocationManager.NETWORK_PROVIDER)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             providers.add(LocationConstants.FUSED_PROVIDER)
@@ -274,6 +283,17 @@ class QXLocationManager private constructor(context: Context) {
 
         tryReturnLastKnown()
 
+        // 秒回优化：若预热到的 lastKnown 足够新鲜(1 分钟内)且精度达标，直接返回，
+        // 不再等实时定位——用户刚用过地图类 App 或被动点很热时，这里能做到近乎瞬时。
+        bestLocation?.let {
+            if (System.currentTimeMillis() - it.time < LocationConstants.FRESH_CACHE_WINDOW &&
+                it.accuracy <= targetAccuracy
+            ) {
+                processLocation(it)
+                return
+            }
+        }
+
         val providers = availableProviders()
         if (providers.isEmpty()) {
             // 没有任何可用 provider（如粗略权限 + 无网络定位服务的机型）：
@@ -317,6 +337,32 @@ class QXLocationManager private constructor(context: Context) {
         }
     }
 
+    /**
+     * 记录降级候选点：坐标非 (0,0)、精度为正即可（不卡精度上限、不卡时效）。
+     * 按精度取最优保存，只在超时兜底且无正式结果时使用。
+     */
+    private fun keepDegraded(loc: Location) {
+        if (loc.latitude == 0.0 || loc.longitude == 0.0 || loc.accuracy <= 0f) return
+        val cur = degradedLocation
+        if (cur == null || loc.accuracy < cur.accuracy || loc.time - cur.time > LocationConstants.SIGNIFICANT_TIME_DELTA) {
+            degradedLocation = loc
+        }
+    }
+
+    /**
+     * 超时兜底的“放宽版” lastKnown 扫描：不卡正式精度门槛，时效放宽到 30 分钟，
+     * 覆盖所有可用 provider（含 PASSIVE）。用于实时定位彻底没出点时，尽量给一个可用坐标。
+     */
+    private fun relaxedLastKnown(): Location? {
+        return availableProviders()
+            .mapNotNull { safeLastKnownLocation(it) }
+            .filter {
+                it.latitude != 0.0 && it.longitude != 0.0 && it.accuracy > 0f &&
+                        System.currentTimeMillis() - it.time < TimeUnit.MINUTES.toMillis(30)
+            }
+            .maxByOrNull { providerWeight(it) }
+    }
+
     private fun safeLastKnownLocation(provider: String): Location? {
         return try {
             locationManager?.getLastKnownLocation(provider)
@@ -352,6 +398,10 @@ class QXLocationManager private constructor(context: Context) {
     private fun createListener(): LocationListener {
         return object : LocationListener {
             override fun onLocationChanged(location: Location) {
+                // 先留一份降级候选：只要坐标非空、精度有效，即便超出正式精度门槛也存下来，
+                // 供超时兜底使用（详见 degradedLocation 说明）。
+                keepDegraded(location)
+
                 if (!isValidLocation(location)) return
 
                 if (isBetterLocation(location, bestLocation)) {
@@ -365,11 +415,10 @@ class QXLocationManager private constructor(context: Context) {
                     return
                 }
 
-                // 达到可接受精度：不锁定第一个粗点，开一个短收敛窗口，
-                // 让 GPS 精度进一步收敛后回调窗口内最优点，避免过早返回导致坐标偏。
-                if (best.accuracy <= targetAccuracy) {
-                    startConvergeWindow()
-                }
+                // 只要拿到一个“有效点”(已过 isValidLocation，精度在上限内)就开启收敛窗口，
+                // 不再要求先达到 targetAccuracy——弱信号下点精度长期达不到 80m 时，
+                // 之前会一路空等到超时(20s)才回，这里改为拿到首个有效点后 CONVERGE_WINDOW 内择优返回。
+                startConvergeWindow()
             }
 
             override fun onProviderDisabled(provider: String) {}
@@ -460,7 +509,8 @@ class QXLocationManager private constructor(context: Context) {
         }
 
         // needAddress 三态：不传 -> 省/市/区；true -> 完整地址；false -> 仅坐标。
-        val needAddress = currentParams?.get("needAddress") as? Boolean
+        // 兼容 H5 把值序列化成字符串 "true"/"false" 的情况，避免快路径被静默绕过。
+        val needAddress = coerceBoolean(currentParams?.get("needAddress"))
 
         isCallbackInvoked = true
         releaseInternal()
@@ -543,6 +593,20 @@ class QXLocationManager private constructor(context: Context) {
         } catch (_: Exception) {}
     }
 
+    /** 把桥参数里可能是 Boolean / "true"/"false" 字符串 / 数字的值归一为三态 Boolean?（无法识别返回 null）。 */
+    private fun coerceBoolean(value: Any?): Boolean? = when (value) {
+        is Boolean -> value
+        is String -> value.trim().lowercase().let {
+            when (it) {
+                "true", "1" -> true
+                "false", "0" -> false
+                else -> null
+            }
+        }
+        is Number -> value.toInt() != 0
+        else -> null
+    }
+
     private fun buildEmptyResult(
         locationType: String,
         hasPermission: Boolean,
@@ -612,9 +676,12 @@ class QXLocationManager private constructor(context: Context) {
 
     private fun startTimeout() {
         timeoutRunnable = Runnable {
-            // 超时兜底优先用已有候选点：既包含实时最优点，也包含预热的 lastKnown，
-            // 只有完全没有任何候选点时才回落到本地缓存。
-            val fallback = bestLocation
+            // 超时兜底链，尽量避免直接判失败：
+            // 1) 实时最优点(含预热 lastKnown)；
+            // 2) 降级候选(超精度门槛但坐标有效的实时点)；
+            // 3) 放宽的 lastKnown 扫描(30 分钟内、不卡精度、含被动点)；
+            // 4) 本地缓存；都没有才 1008。
+            val fallback = bestLocation ?: degradedLocation ?: relaxedLastKnown()
             if (fallback != null) {
                 processLocation(fallback)
             } else {
@@ -714,6 +781,7 @@ class QXLocationManager private constructor(context: Context) {
         ClosureRegistry.remove(LocationConstants.KEY_PERMISSION_CLOSURE)
         isCallbackInvoked = false
         bestLocation = null
+        degradedLocation = null
         targetAccuracy = LocationConstants.DEFAULT_ACCURACY
         timeout = LocationConstants.DEFAULT_TIMEOUT.toLong()
     }
@@ -745,11 +813,17 @@ object LocationConstants {
     const val DEFAULT_ACCURACY = 80
     // 达到该精度即视为理想结果，立即返回，不再等待收敛窗口。
     const val PREFERRED_ACCURACY = 25
-    const val DEFAULT_TIMEOUT = 12000
+    // GPS 冷启动/室内首个有效点常需 15s+，默认给足 20s 兜底；拿到理想点会提前返回，
+    // 只影响最坏情况。业务可显式传 timeout 覆盖。
+    const val DEFAULT_TIMEOUT = 20000
     // 收敛窗口：拿到可接受精度后再等这么久，让 GPS 精度进一步收敛，提升返回坐标的准确度。
     const val CONVERGE_WINDOW = 2500
     // 逆地理编码超时：到点仍未返回地址就先把坐标发出去，避免 H5 永久等待。
-    const val GEOCODE_TIMEOUT = 3000
+    // 压到 2s：坐标是核心，地址拿不到就先出坐标，减少“定位很慢”的观感。
+    const val GEOCODE_TIMEOUT = 2000
+
+    // 预热 lastKnown 的“可秒回”新鲜度窗口：1 分钟内的点视为足够新，直接返回不等实时定位。
+    const val FRESH_CACHE_WINDOW = 60_000L
 
     // 选点时效：新坐标比候选点新超过该阈值时优先采用（容忍一定的精度回退），避免返回陈旧坐标。
     const val SIGNIFICANT_TIME_DELTA = 30_000L
